@@ -1,0 +1,9 @@
+.ci
+.git
+.gitignore
+LICENSE.md
+Makefile
+README.md
+INSTALL.md
+CONTRIBUTING.md
+Dockerfile

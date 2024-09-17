@@ -1,0 +1,19 @@
+[package]
+name = "kaniop"
+version = "0.0.0"
+authors = ["Pando85 <pando855@gmail.com>"]
+rust-version = "1.81"
+edition = "2021"
+license-file = "LICENSE.md"
+repository = "https://github.com/pando85/kanidm-operator"
+readme = "README.md"
+
+[dependencies]
+tokio = { version = "1.40", features = ["macros", "rt-multi-thread"] }
+kube = { version = "0.95", default-features = true, features = ["derive", "runtime"] }
+k8s-openapi = { version = "0.23", default-features = false, features = ["v1_30"] }
+futures = "0.3"
+serde = "1.0"
+serde_json = "1.0"
+schemars = "0.8"
+thiserror = "1.0"
