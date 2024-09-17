@@ -1,12 +1,16 @@
 [package]
-name = "kaniop"
-version = "0.0.0"
-authors = ["Pando85 <pando855@gmail.com>"]
-rust-version = "1.81"
-edition = "2021"
-license-file = "LICENSE.md"
-repository = "https://github.com/pando85/kanidm-operator"
-readme = "README.md"
+name = "kaniop_operator"
+version.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+edition.workspace = true
+license-file.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[lib]
+name = "kaniop_operator"
+path = "src/lib.rs"
 
 [dependencies]
 tokio = { version = "1.40", features = ["macros", "rt-multi-thread"] }

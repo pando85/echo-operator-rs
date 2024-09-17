@@ -23,7 +23,7 @@ kopium:
 		echo "$(KOPIUM_PATH) is already installed."; \
 	fi
 
-TARGET_CRD_DIR := kaniop_core/src/crd
+TARGET_CRD_DIR := libs/operator/src/crd
 CRD_DIR := crd
 CRD_FILES := $(wildcard $(CRD_DIR)/*.yaml)
 
@@ -53,6 +53,14 @@ lint: crd-code
 test:	## run tests
 test: lint
 	cargo test
+
+.PHONY: update-version
+update-version: ## update version from VERSION file in all Cargo.toml manifests
+update-version: */Cargo.toml
+	@VERSION=$$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n1); \
+	sed -i -E "s/^(kaniop\_.*version\s=\s)\"(.*)\"/\1\"$$VERSION\"/gm" */Cargo.toml && \
+	cargo update -p kaniop_operator && \
+	echo updated to version "$$VERSION" cargo files
 
 .PHONY: update-changelog
 update-changelog:	## automatically update changelog based on commits

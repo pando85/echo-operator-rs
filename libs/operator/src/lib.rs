@@ -1,50 +1,18 @@
 use std::sync::Arc;
 
-use futures::stream::StreamExt;
-use kube::runtime::watcher::Config;
 use kube::Resource;
 use kube::ResourceExt;
-use kube::{client::Client, runtime::controller::Action, runtime::Controller, Api};
+use kube::{client::Client, runtime::controller::Action};
 use tokio::time::Duration;
 
 use crate::crd::echo::Echo;
 
 pub mod crd;
-mod echo;
-mod finalizer;
-
-#[tokio::main]
-async fn main() {
-    let kubernetes_client: Client = Client::try_default()
-        .await
-        .expect("Expected a valid KUBECONFIG environment variable.");
-
-    let crd_api: Api<Echo> = Api::all(kubernetes_client.clone());
-    let context: Arc<ContextData> = Arc::new(ContextData::new(kubernetes_client.clone()));
-
-    // The controller comes from the `kube_runtime` crate and manages the reconciliation process.
-    // It requires the following information:
-    // - `kube::Api<T>` this controller "owns". In this case, `T = Echo`, as this controller owns the `Echo` resource,
-    // - `kube::runtime::watcher::Config` can be adjusted for precise filtering of `Echo` resources before the actual reconciliation, e.g. by label,
-    // - `reconcile` function with reconciliation logic to be called each time a resource of `Echo` kind is created/updated/deleted,
-    // - `on_error` function to call whenever reconciliation fails.
-    Controller::new(crd_api.clone(), Config::default())
-        .run(reconcile, on_error, context)
-        .for_each(|reconciliation_result| async move {
-            match reconciliation_result {
-                Ok(echo_resource) => {
-                    println!("Reconciliation successful. Resource: {:?}", echo_resource);
-                }
-                Err(reconciliation_err) => {
-                    eprintln!("Reconciliation error: {:?}", reconciliation_err)
-                }
-            }
-        })
-        .await;
-}
+pub mod echo;
+pub mod finalizer;
 
 /// Context injected with each `reconcile` and `on_error` method invocation.
-struct ContextData {
+pub struct ContextData {
     /// Kubernetes client to make Kubernetes API requests with. Required for K8S resource management.
     client: Client,
 }
@@ -70,7 +38,7 @@ enum EchoAction {
     NoOp,
 }
 
-async fn reconcile(echo: Arc<Echo>, context: Arc<ContextData>) -> Result<Action, Error> {
+pub async fn reconcile(echo: Arc<Echo>, context: Arc<ContextData>) -> Result<Action, Error> {
     let client: Client = context.client.clone(); // The `Client` is shared -> a clone from the reference is obtained
 
     // The resource of `Echo` kind is required to have a namespace set. However, it is not guaranteed
@@ -154,7 +122,7 @@ fn determine_action(echo: &Echo) -> EchoAction {
 /// - `echo`: The erroneous resource.
 /// - `error`: A reference to the `kube::Error` that occurred during reconciliation.
 /// - `_context`: Unused argument. Context Data "injected" automatically by kube-rs.
-fn on_error(echo: Arc<Echo>, error: &Error, _context: Arc<ContextData>) -> Action {
+pub fn on_error(echo: Arc<Echo>, error: &Error, _context: Arc<ContextData>) -> Action {
     eprintln!("Reconciliation error:\n{:?}.\n{:?}", error, echo);
     Action::requeue(Duration::from_secs(5))
 }

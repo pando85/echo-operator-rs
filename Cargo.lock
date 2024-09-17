@@ -751,6 +751,17 @@ version = "0.0.0"
 dependencies = [
  "futures",
  "k8s-openapi",
+ "kaniop_operator",
+ "kube",
+ "tokio",
+]
+
+[[package]]
+name = "kaniop_operator"
+version = "0.0.0"
+dependencies = [
+ "futures",
+ "k8s-openapi",
  "kube",
  "schemars",
  "serde",
