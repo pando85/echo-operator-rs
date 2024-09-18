@@ -25,7 +25,10 @@ spec:
       restartPolicy: Always
       containers:
         - name: kaniop
-          image: ghcr.io/pando85/kaniop:latest
+          image: ghcr.io/pando85/kaniop:a81df96
+          env:
+            - name: RUST_LOG
+              value: "trace"
           resources:
             requests:
               cpu: 10m

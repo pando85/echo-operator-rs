@@ -1,38 +1,51 @@
-use kaniop_operator::crd::echo::Echo;
-use kaniop_operator::{on_error, reconcile, ContextData};
+use actix_web::{
+    get, middleware, web::Data, App, HttpRequest, HttpResponse, HttpServer, Responder,
+};
+use kaniop_operator::controller::{self, State};
+use kaniop_operator::telemetry;
 
-use std::sync::Arc;
+#[get("/metrics")]
+async fn metrics(c: Data<State>, _req: HttpRequest) -> impl Responder {
+    let metrics = c.metrics();
+    HttpResponse::Ok()
+        .content_type("application/openmetrics-text; version=1.0.0; charset=utf-8")
+        .body(metrics)
+}
 
-use futures::stream::StreamExt;
-use kube::runtime::watcher::Config;
-use kube::{client::Client, runtime::Controller, Api};
+#[get("/health")]
+async fn health(_: HttpRequest) -> impl Responder {
+    HttpResponse::Ok().json("healthy")
+}
 
+#[get("/")]
+async fn index(c: Data<State>, _req: HttpRequest) -> impl Responder {
+    let d = c.diagnostics().await;
+    HttpResponse::Ok().json(&d)
+}
+
+// TODO: Configuration params by CLI and ENV:
+//  - port by cli?
+//  - logging level
+//  - telemetry
 #[tokio::main]
-async fn main() {
-    let kubernetes_client: Client = Client::try_default()
-        .await
-        .expect("Expected a valid KUBECONFIG environment variable.");
+async fn main() -> anyhow::Result<()> {
+    telemetry::init(false).await;
 
-    let crd_api: Api<Echo> = Api::all(kubernetes_client.clone());
-    let context: Arc<ContextData> = Arc::new(ContextData::new(kubernetes_client.clone()));
+    let state = State::default();
+    let controller = controller::run(state.clone());
 
-    // The controller comes from the `kube_runtime` crate and manages the reconciliation process.
-    // It requires the following information:
-    // - `kube::Api<T>` this controller "owns". In this case, `T = Echo`, as this controller owns the `Echo` resource,
-    // - `kube::runtime::watcher::Config` can be adjusted for precise filtering of `Echo` resources before the actual reconciliation, e.g. by label,
-    // - `reconcile` function with reconciliation logic to be called each time a resource of `Echo` kind is created/updated/deleted,
-    // - `on_error` function to call whenever reconciliation fails.
-    Controller::new(crd_api.clone(), Config::default())
-        .run(reconcile, on_error, context)
-        .for_each(|reconciliation_result| async move {
-            match reconciliation_result {
-                Ok(echo_resource) => {
-                    println!("Reconciliation successful. Resource: {:?}", echo_resource);
-                }
-                Err(reconciliation_err) => {
-                    eprintln!("Reconciliation error: {:?}", reconciliation_err)
-                }
-            }
-        })
-        .await;
+    let server = HttpServer::new(move || {
+        App::new()
+            .app_data(Data::new(state.clone()))
+            .wrap(middleware::Logger::default().exclude("/health"))
+            .service(index)
+            .service(health)
+            .service(metrics)
+    })
+    .bind("0.0.0.0:8080")?
+    .shutdown_timeout(5);
+
+    // Both runtimes implements graceful shutdown, so poll until both are done
+    tokio::join!(controller, server.run()).1?;
+    Ok(())
 }

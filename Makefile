@@ -3,6 +3,7 @@ VERSION ?= $(shell git rev-parse --short HEAD)
 KUBERNETES_VERSION = 1.30
 KIND_CLUSTER_NAME = chart-testing
 KOPIUM_PATH ?= kopium
+CARGO_TARGET_DIR := target
 
 .DEFAULT: help
 .PHONY: help
@@ -11,7 +12,6 @@ help:	## Show this help menu.
 	@echo ""
 	@@egrep -h "#[#]" $(MAKEFILE_LIST) | sed -e 's/\\$$//' | awk 'BEGIN {FS = "[:=].*?#[#] "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
 	@echo ""
-
 
 .PHONY: kopium
 kopium:	## install kopium
@@ -33,15 +33,9 @@ $(TARGET_CRD_DIR)/%.rs: $(CRD_DIR)/%.yaml
 	@kopium -f $< > $@
 
 .PHONY: crd-code
-crd-code: $(CRD_FILES:$(CRD_DIR)/%.yaml=$(TARGET_CRD_DIR)/%.rs)
-crd-code: kopium
 crd-code: ## Generate code from CRD definitions
+crd-code: kopium $(CRD_FILES:$(CRD_DIR)/%.yaml=$(TARGET_CRD_DIR)/%.rs)
 	@echo "CRDs code generation complete."
-
-.PHONY: build
-build:	## compile kaniop
-build: crd-code
-	cargo build --release
 
 .PHONY: lint
 lint:	## lint code
@@ -53,6 +47,16 @@ lint: crd-code
 test:	## run tests
 test: lint
 	cargo test
+
+.PHONY: build
+build:	## compile kaniop
+build: crd-code
+	cargo build --release
+
+.PHONY: release
+release:	##  create release binary
+release: crd-code
+	cargo build --locked --release --bin kaniop
 
 .PHONY: update-version
 update-version: ## update version from VERSION file in all Cargo.toml manifests
@@ -76,15 +80,15 @@ publish:	## publish crates
 	done;
 
 .PHONY: image
-image: crd-code
+image: crd-code release
 image:	## build image
-	@docker buildx build --load -t ghcr.io/$(GH_ORG)/kaniop .
+	@$(SUDO) docker buildx build --load -t ghcr.io/$(GH_ORG)/kaniop:$(VERSION) .
 
 .PHONY: push-images
-push-images: DOCKER_EXTRA_ARGS ?= --platform linux/amd64,linux/arm64
+push-images: DOCKER_EXTRA_ARGS ?= --platform linux/amd64
 push-images: crd-code
 push-images:	## push images
-	$(SUDO) docker buildx build $(DOCKER_EXTRA_ARGS) --push -t ghcr.io/$(GH_ORG)/kaniop .
+	@$(SUDO) docker buildx build $(DOCKER_EXTRA_ARGS) --push -t ghcr.io/$(GH_ORG)/kaniop:$(VERSION) .
 
 .PHONY: manifest
 manifest:	## replace manifest variables
@@ -98,7 +102,15 @@ e2e: image manifest ## run e2e tests
 	kubectl apply -f crd/echo.yaml
 	kubectl apply -f install/kubernetes/rbac.yaml
 	kubectl apply -f install/kubernetes/deployment.yaml
-
+	for i in {1..20}; do \
+		if kubectl get deploy kaniop | grep -E 'kaniop.*1/1'; then \
+			echo "Kanio deployment is ready"; \
+			break; \
+		else \
+			echo "Retrying in 3 seconds..."; \
+			sleep 3; \
+		fi \
+	done
 .PHONY: delete-kind
 delete-kind:
 	kind delete cluster --name $(KIND_CLUSTER_NAME)

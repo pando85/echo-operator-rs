@@ -1,8 +1,10 @@
+use crate::error::{Error, Result};
+
 use k8s_openapi::api::apps::v1::{Deployment, DeploymentSpec};
 use k8s_openapi::api::core::v1::{Container, ContainerPort, PodSpec, PodTemplateSpec};
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::LabelSelector;
 use kube::api::{DeleteParams, ObjectMeta, PostParams};
-use kube::{Api, Client, Error};
+use kube::{Api, Client};
 use std::collections::BTreeMap;
 
 /// Creates a new deployment of `n` pods with the `inanimate/echo-server:latest` docker image inside,
@@ -64,6 +66,7 @@ pub async fn deploy(
     deployment_api
         .create(&PostParams::default(), &deployment)
         .await
+        .map_err(Error::KubeError)
 }
 
 /// Deletes an existing deployment.
@@ -76,6 +79,8 @@ pub async fn deploy(
 /// Note: It is assumed the deployment exists for simplicity. Otherwise returns an Error.
 pub async fn delete(client: Client, name: &str, namespace: &str) -> Result<(), Error> {
     let api: Api<Deployment> = Api::namespaced(client, namespace);
-    api.delete(name, &DeleteParams::default()).await?;
+    api.delete(name, &DeleteParams::default())
+        .await
+        .map_err(Error::KubeError)?;
     Ok(())
 }

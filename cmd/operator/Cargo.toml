@@ -15,6 +15,6 @@ path = "src/main.rs"
 [dependencies]
 kaniop_operator = { path = "../../libs/operator", version = "0.0.0" }
 tokio = { version = "1.40", features = ["macros", "rt-multi-thread"] }
-kube = { version = "0.95", default-features = true, features = ["derive", "runtime"] }
-k8s-openapi = { version = "0.23", default-features = false, features = ["v1_30"] }
+actix-web = "4.9.0"
 futures = "0.3"
+anyhow = "1.0"
