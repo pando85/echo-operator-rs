@@ -3,7 +3,15 @@ VERSION ?= $(shell git rev-parse --short HEAD)
 KUBERNETES_VERSION = 1.30
 KIND_CLUSTER_NAME = chart-testing
 KOPIUM_PATH ?= kopium
-CARGO_TARGET_DIR := target
+export CARGO_TARGET_DIR ?= target-$(CARGO_TARGET)
+CARGO_TARGET ?= x86_64-unknown-linux-gnu
+CARGO_BUILD_PARAMS = --target=$(CARGO_TARGET) --release
+DOCKER_BUILD_PARAMS = --build-arg "CARGO_TARGET_DIR=$(CARGO_TARGET_DIR)" \
+		--build-arg "CARGO_BUILD_TARGET=$(CARGO_TARGET)" \
+		-t ghcr.io/$(GH_ORG)/kaniop:$(VERSION) .
+IMAGE_ARCHITECTURES := amd64 arm64
+# build images in parallel
+MAKEFLAGS += -j2
 
 .DEFAULT: help
 .PHONY: help
@@ -50,13 +58,23 @@ test: lint
 
 .PHONY: build
 build:	## compile kaniop
-build: crd-code
-	cargo build --release
+build: crd-code release
 
 .PHONY: release
-release:	##  create release binary
 release: crd-code
-	cargo build --locked --release --bin kaniop
+release: CARGO_BUILD_PARAMS += --frozen
+release:	## generate $(PKG_BASE_NAME).tar.gz with binary
+	@if [ "$(CARGO_TARGET)" != "$(shell uname -m)-unknown-linux-gnu" ]; then  \
+		if [ "$${CARGO_TARGET_DIR}" != "$${CARGO_TARGET_DIR#/}" ]; then  \
+			echo CARGO_TARGET_DIR should be relative for cross compiling; \
+			exit 1; \
+		fi; \
+		cargo install cross; \
+		cross build --target-dir $(shell pwd)/$(CARGO_TARGET_DIR) $(CARGO_BUILD_PARAMS); \
+	else \
+		cargo build $(CARGO_BUILD_PARAMS); \
+	fi
+	@echo "binary is in $(CARGO_TARGET_DIR)/$(CARGO_TARGET)/release/kaniop"
 
 .PHONY: update-version
 update-version: ## update version from VERSION file in all Cargo.toml manifests
@@ -82,13 +100,19 @@ publish:	## publish crates
 .PHONY: image
 image: crd-code release
 image:	## build image
-	@$(SUDO) docker buildx build --load -t ghcr.io/$(GH_ORG)/kaniop:$(VERSION) .
+	@$(SUDO) docker buildx build --load $(DOCKER_BUILD_PARAMS)
+
+push-image-%: crd-code
+	# force multiple release targets
+	$(MAKE) CARGO_TARGET=$(CARGO_TARGET) release
+	$(SUDO) docker buildx build --push --no-cache --platform linux/$* $(DOCKER_BUILD_PARAMS)
+
+push-image-amd64: CARGO_TARGET=x86_64-unknown-linux-gnu
+push-image-arm64: CARGO_TARGET=aarch64-unknown-linux-gnu
 
 .PHONY: push-images
-push-images: DOCKER_EXTRA_ARGS ?= --platform linux/amd64
-push-images: crd-code
-push-images:	## push images
-	@$(SUDO) docker buildx build $(DOCKER_EXTRA_ARGS) --push -t ghcr.io/$(GH_ORG)/kaniop:$(VERSION) .
+push-images: crd-code $(IMAGE_ARCHITECTURES:%=push-image-%)
+push-images:	## push images for all architectures
 
 .PHONY: manifest
 manifest:	## replace manifest variables
