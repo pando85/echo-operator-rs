@@ -1,0 +1,29 @@
+{{- if .Values.rbac.create }}
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: {{ include "kaniop.fullname" . }}
+  labels:
+    {{- include "kaniop.labels" . | nindent 4 }}
+rules:
+  - apiGroups:
+      - example.com
+    resources:
+      - echoes
+      - echoes/finalizers
+    verbs:
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - apps
+    resources:
+      - deployments
+    verbs:
+      - patch
+      - update
+      - delete
+      - create
+{{- end }}

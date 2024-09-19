@@ -6,12 +6,16 @@ KOPIUM_PATH ?= kopium
 export CARGO_TARGET_DIR ?= target-$(CARGO_TARGET)
 CARGO_TARGET ?= x86_64-unknown-linux-gnu
 CARGO_BUILD_PARAMS = --target=$(CARGO_TARGET) --release
+DOCKER_IMAGE ?= ghcr.io/$(GH_ORG)/kaniop:$(VERSION)
 DOCKER_BUILD_PARAMS = --build-arg "CARGO_TARGET_DIR=$(CARGO_TARGET_DIR)" \
 		--build-arg "CARGO_BUILD_TARGET=$(CARGO_TARGET)" \
-		-t ghcr.io/$(GH_ORG)/kaniop:$(VERSION) .
+		-t $(DOCKER_IMAGE) .
 IMAGE_ARCHITECTURES := amd64 arm64
 # build images in parallel
 MAKEFLAGS += -j2
+TARGET_CRD_DIR := libs/operator/src/crd
+CRD_DIR := charts/kaniop/crds
+CRD_FILES := $(wildcard $(CRD_DIR)/*.yaml)
 
 .DEFAULT: help
 .PHONY: help
@@ -31,18 +35,15 @@ kopium:
 		echo "$(KOPIUM_PATH) is already installed."; \
 	fi
 
-TARGET_CRD_DIR := libs/operator/src/crd
-CRD_DIR := crd
-CRD_FILES := $(wildcard $(CRD_DIR)/*.yaml)
-
 .PHONY: $(TARGET_CRD_DIR)/%.rs
-$(TARGET_CRD_DIR)/%.rs: $(CRD_DIR)/%.yaml
+$(TARGET_CRD_DIR)/%.rs: $(CRD_DIR)/crd-%.yaml
 	@echo "Generating $@ from $<"
 	@kopium -f $< > $@
 
+.NOTPARALLEL: crd-code
 .PHONY: crd-code
 crd-code: ## Generate code from CRD definitions
-crd-code: kopium $(CRD_FILES:$(CRD_DIR)/%.yaml=$(TARGET_CRD_DIR)/%.rs)
+crd-code: kopium $(CRD_FILES:$(CRD_DIR)/crd-%.yaml=$(TARGET_CRD_DIR)/%.rs)
 	@echo "CRDs code generation complete."
 
 .PHONY: lint
@@ -78,11 +79,11 @@ release:	## generate $(PKG_BASE_NAME).tar.gz with binary
 
 .PHONY: update-version
 update-version: ## update version from VERSION file in all Cargo.toml manifests
-update-version: */Cargo.toml
 	@VERSION=$$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n1); \
-	sed -i -E "s/^(kaniop\_.*version\s=\s)\"(.*)\"/\1\"$$VERSION\"/gm" */Cargo.toml && \
+	sed -i -E "s/^(kaniop\_.*version\s=\s)\"(.*)\"/\1\"$$VERSION\"/gm" */*/Cargo.toml && \
+	sed -i -E "s/^(\s+tag:\s)(.*)/\1$$VERSION/gm" charts/kaniop/values.yaml && \
 	cargo update -p kaniop_operator && \
-	echo updated to version "$$VERSION" cargo files
+	echo updated to version "$$VERSION" cargo and helm files
 
 .PHONY: update-changelog
 update-changelog:	## automatically update changelog based on commits
@@ -114,25 +115,21 @@ push-image-arm64: CARGO_TARGET=aarch64-unknown-linux-gnu
 push-images: crd-code $(IMAGE_ARCHITECTURES:%=push-image-%)
 push-images:	## push images for all architectures
 
-.PHONY: manifest
-manifest:	## replace manifest variables
-	sed -i "s#image: ghcr.io/.*kaniop.*#image: ghcr.io/$(GH_ORG)/kaniop:$(VERSION)#g" \
-		install/kubernetes/deployment.yaml
-
-.PHONY: kind
-e2e: image manifest ## run e2e tests
+.PHONY: e2e
+e2e: image
+e2e:	## run e2e tests
 	kind create cluster --name $(KIND_CLUSTER_NAME) --config .github/kind-cluster-$(KUBERNETES_VERSION).yaml
-	kind load --name $(KIND_CLUSTER_NAME) docker-image ghcr.io/$(GH_ORG)/kaniop:$(VERSION)
-	kubectl apply -f crd/echo.yaml
-	kubectl apply -f install/kubernetes/rbac.yaml
-	kubectl apply -f install/kubernetes/deployment.yaml
+	kind load --name $(KIND_CLUSTER_NAME) docker-image $(DOCKER_IMAGE)
+	helm install kaniop ./charts/kaniop \
+		--set image.tag=$(VERSION) \
+		--set logging.level=debug
 	for i in {1..20}; do \
 		if kubectl get deploy kaniop | grep -E 'kaniop.*1/1'; then \
 			echo "Kanio deployment is ready"; \
 			break; \
 		else \
-			echo "Retrying in 3 seconds..."; \
-			sleep 3; \
+			echo "Retrying in 5 seconds..."; \
+			sleep 5; \
 		fi \
 	done
 .PHONY: delete-kind
