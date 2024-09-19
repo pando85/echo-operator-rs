@@ -63,7 +63,7 @@ build: crd-code release
 
 .PHONY: release
 release: crd-code
-release: CARGO_BUILD_PARAMS += --frozen
+release: CARGO_BUILD_PARAMS += --locked
 release:	## generate $(PKG_BASE_NAME).tar.gz with binary
 	@if [ "$(CARGO_TARGET)" != "$(shell uname -m)-unknown-linux-gnu" ]; then  \
 		if [ "$${CARGO_TARGET_DIR}" != "$${CARGO_TARGET_DIR#/}" ]; then  \
