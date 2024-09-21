@@ -39,9 +39,9 @@ spec:
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           ports:
-          - name: metrics
-            containerPort: {{ .Values.containerPorts.metrics }}
-            protocol: TCP
+            - name: metrics
+              containerPort: {{ .Values.containerPorts.metrics }}
+              protocol: TCP
           env:
             - name: RUST_LOG
               value: {{ .Values.logging.level }}
