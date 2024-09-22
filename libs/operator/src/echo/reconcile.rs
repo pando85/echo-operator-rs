@@ -18,7 +18,6 @@ use tracing::{field, info, instrument, Span};
 
 /// Creates a new deployment of `n` pods with the `inanimate/echo-server:latest` docker image inside,
 /// where `n` is the number of `replicas` given.
-/// Note: It is assumed the resource does not already exists for simplicity. Returns an `Error` if it does.
 pub async fn deploy(
     client: Client,
     name: &str,
@@ -72,7 +71,6 @@ pub async fn deploy(
 }
 
 /// Deletes an existing deployment.
-/// Note: It is assumed the deployment exists for simplicity. Otherwise returns an Error.
 pub async fn delete(client: Client, name: &str, namespace: &str) -> Result<(), Error> {
     let api: Api<Deployment> = Api::namespaced(client, namespace);
     api.delete(name, &DeleteParams::default())
@@ -91,21 +89,21 @@ enum EchoAction {
     NoOp,
 }
 
-/// Resources arrives into reconciliation queue in a certain state. This function looks at
-/// the state of given `Echo` resource and decides which actions needs to be performed.
-/// The finite set of possible actions is represented by the `EchoAction` enum.
+/// Determines the appropriate action to take for the given `Echo` resource.
+///
+/// This function checks the `Echo` resource's metadata to decide whether the
+/// resource should be deleted, created, or no operation is needed.
+/// - If the `deletion_timestamp` is set, the action is `Delete`.
+/// - If there are no finalizers or the finalizers list is empty, the action is `Create`.
+/// - Otherwise, the action is `NoOp`.
 fn determine_action(echo: &Echo) -> EchoAction {
-    if echo.meta().deletion_timestamp.is_some() {
-        EchoAction::Delete
-    } else if echo
-        .meta()
-        .finalizers
-        .as_ref()
-        .map_or(true, |finalizers| finalizers.is_empty())
-    {
-        EchoAction::Create
-    } else {
-        EchoAction::NoOp
+    match echo.meta().deletion_timestamp {
+        Some(_) => EchoAction::Delete,
+        None => match echo.meta().finalizers.as_ref() {
+            Some(finalizers) if finalizers.is_empty() => EchoAction::Create,
+            None => EchoAction::Create,
+            _ => EchoAction::NoOp,
+        },
     }
 }
 
@@ -113,54 +111,28 @@ fn determine_action(echo: &Echo) -> EchoAction {
 pub async fn reconcile(echo: Arc<Echo>, ctx: Arc<Context>) -> Result<Action, Error> {
     let trace_id = telemetry::get_trace_id();
     Span::current().record("trace_id", field::display(&trace_id));
-
-    let client: Client = ctx.client.clone();
-
     let _timer = ctx.metrics.reconcile.count_and_measure(&trace_id);
-    // The resource of `Echo` kind is required to have a namespace set. However, it is not guaranteed
-    // the resource will have a `namespace` set. Therefore, the `namespace` field on object's metadata
-    // is optional and Rust forces the programmer to check for it's existence first.
-    let namespace: String = match echo.namespace() {
-        None => {
-            // If there is no namespace to deploy to defined, reconciliation ends with an error immediately.
-            return Err(Error::UserInputError(
-                "Expected Echo resource to be namespaced. Can't deploy to an unknown namespace."
-                    .to_owned(),
-            ));
-        }
-        // If namespace is known, proceed. In a more advanced version of the operator, perhaps
-        // the namespace could be checked for existence first.
-        Some(namespace) => namespace,
-    };
-    let name = echo.name_any(); // Name of the Echo resource is used to name the subresources as well.
 
+    let namespace = echo.namespace().ok_or_else(|| {
+        Error::UserInputError(
+            "Expected Echo resource to be namespaced. Can't deploy to an unknown namespace."
+                .to_owned(),
+        )
+    })?;
+    let name = echo.name_any();
     info!("Reconciling Echo \"{name}\" in {namespace}");
 
-    // Performs action as decided by the `determine_action` function.
+    let client: Client = ctx.client.clone();
     match determine_action(&echo) {
         EchoAction::Create => {
-            // Creates a deployment with `n` Echo service pods, but applies a finalizer first.
-            // Finalizer is applied first, as the operator might be shut down and restarted
-            // at any time, leaving subresources in intermediate state. This prevents leaks on
-            // the `Echo` resource deletion.
-
-            // Apply the finalizer first. If that fails, the `?` operator invokes automatic conversion
-            // of `kube::Error` to the `Error` defined in this crate.
+            // Adds a finalizer to the `Echo` resource to prevent it from being deleted before
             finalizer::add(client.clone(), &name, &namespace)
                 .await
                 .map_err(Error::KubeError)?;
-            // Invoke creation of a Kubernetes built-in resource named deployment with `n` echo service pods.
             deploy(client, &name, echo.spec.replicas, &namespace).await?;
             Ok(Action::requeue(Duration::from_secs(10)))
         }
         EchoAction::Delete => {
-            // Deletes any subresources related to this `Echo` resources. If and only if all subresources
-            // are deleted, the finalizer is removed and Kubernetes is free to remove the `Echo` resource.
-
-            //First, delete the deployment. If there is any error deleting the deployment, it is
-            // automatically converted into `Error` defined in this crate and the reconciliation is ended
-            // with that error.
-            // Note: A more advanced implementation would check for the Deployment's existence.
             delete(client.clone(), &name, &namespace).await?;
 
             // Once the deployment is successfully removed, remove the finalizer to make it possible
@@ -168,7 +140,7 @@ pub async fn reconcile(echo: Arc<Echo>, ctx: Arc<Context>) -> Result<Action, Err
             finalizer::delete(client, &name, &namespace)
                 .await
                 .map_err(Error::KubeError)?;
-            Ok(Action::await_change()) // Makes no sense to delete after a successful delete, as the resource is gone
+            Ok(Action::await_change())
         }
         // The resource is already in desired state, do nothing and re-check after 10 seconds
         EchoAction::NoOp => Ok(Action::requeue(Duration::from_secs(10))),
