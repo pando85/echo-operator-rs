@@ -1,7 +1,8 @@
 use actix_web::{
     get, middleware, web::Data, App, HttpRequest, HttpResponse, HttpServer, Responder,
 };
-use kaniop_operator::controller::{self, State};
+use kaniop_operator::controller::State;
+use kaniop_operator::echo;
 use kaniop_operator::telemetry;
 
 use clap::{crate_authors, crate_description, crate_version, Parser};
@@ -38,11 +39,11 @@ struct Args {
     port: u32,
 
     /// Set logging filter directive for `tracing_subscriber::filter::EnvFilter`. Example: "info,kube=debug,kaniop=debug"
-    #[arg(short, long, default_value = "info", env)]
+    #[arg(long, default_value = "info", env)]
     log_filter: String,
 
     /// Set log format
-    #[arg(short, long, value_enum, default_value_t = telemetry::LogFormat::Text, env)]
+    #[arg(long, value_enum, default_value_t = telemetry::LogFormat::Text, env)]
     log_format: telemetry::LogFormat,
 
     /// URL for the OpenTelemetry tracing endpoint.
@@ -61,10 +62,6 @@ struct Args {
     sample_ratio: f64,
 }
 
-// TODO: Configuration params by CLI and ENV:
-//  - port by cli?
-//  - logging level
-//  - telemetry
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let args: Args = Args::parse();
@@ -78,7 +75,7 @@ async fn main() -> anyhow::Result<()> {
     .await?;
 
     let state = State::default();
-    let controller = controller::run(state.clone());
+    let controller = echo::controller::run(state.clone());
 
     let server = HttpServer::new(move || {
         App::new()

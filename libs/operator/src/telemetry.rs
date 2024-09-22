@@ -1,14 +1,10 @@
 use std::time::Duration;
 
-use opentelemetry::{
-    trace::{TraceError, TraceId, TracerProvider},
-    KeyValue,
-};
+use opentelemetry::trace::{TraceError, TraceId, TracerProvider};
+use opentelemetry::KeyValue;
 use opentelemetry_otlp::WithExportConfig;
-use opentelemetry_sdk::{
-    trace::{self, RandomIdGenerator, Sampler},
-    Resource,
-};
+use opentelemetry_sdk::trace::{self, RandomIdGenerator, Sampler};
+use opentelemetry_sdk::Resource;
 use serde::Serialize;
 use thiserror::Error;
 use tracing::dispatcher::SetGlobalDefaultError;

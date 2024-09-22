@@ -19,7 +19,7 @@ pub struct Metrics {
 
 impl Default for Metrics {
     fn default() -> Self {
-        let mut registry = Registry::with_prefix("kaniop_ctrl_reconcile");
+        let mut registry = Registry::with_prefix("echo_ctrl_reconcile");
         let reconcile = ReconcileMetrics::default().register(&mut registry);
         Self {
             registry: Arc::new(registry),
