@@ -1,33 +1,27 @@
 use crate::controller::Context;
 use crate::crd::echo::Echo;
-use crate::echo::finalizer;
 use crate::error::{Error, Result};
 use crate::telemetry;
 
 use k8s_openapi::api::apps::v1::{Deployment, DeploymentSpec};
 use k8s_openapi::api::core::v1::{Container, ContainerPort, PodSpec, PodTemplateSpec};
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::LabelSelector;
-use kube::api::{Api, DeleteParams, ObjectMeta, PostParams};
+use kube::api::{Api, DeleteParams, ObjectMeta, Patch, PatchParams, PostParams};
 use kube::client::Client;
 use kube::runtime::controller::Action;
-use kube::{Resource, ResourceExt};
+use kube::runtime::finalizer::{finalizer, Event};
+use kube::ResourceExt;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use tokio::time::Duration;
 use tracing::{field, info, instrument, Span};
 
-/// Creates a new deployment of `n` pods with the `inanimate/echo-server:latest` docker image inside,
-/// where `n` is the number of `replicas` given.
-pub async fn deploy(
-    client: Client,
-    name: &str,
-    replicas: i32,
-    namespace: &str,
-) -> Result<Deployment, Error> {
+pub static ECHO_FINALIZER: &str = "echoes.example.com";
+
+fn build_deployment(name: &str, namespace: &str, replicas: i32) -> Deployment {
     let mut labels: BTreeMap<String, String> = BTreeMap::new();
     labels.insert("app".to_owned(), name.to_owned());
-
-    let deployment: Deployment = Deployment {
+    Deployment {
         metadata: ObjectMeta {
             name: Some(name.to_owned()),
             namespace: Some(namespace.to_owned()),
@@ -61,7 +55,16 @@ pub async fn deploy(
             ..DeploymentSpec::default()
         }),
         ..Deployment::default()
-    };
+    }
+}
+
+pub async fn create(
+    client: Client,
+    name: &str,
+    replicas: i32,
+    namespace: &str,
+) -> Result<Deployment, Error> {
+    let deployment = build_deployment(name, namespace, replicas);
 
     let deployment_api: Api<Deployment> = Api::namespaced(client, namespace);
     deployment_api
@@ -70,7 +73,21 @@ pub async fn deploy(
         .map_err(Error::KubeError)
 }
 
-/// Deletes an existing deployment.
+async fn patch(
+    client: Client,
+    name: &str,
+    replicas: i32,
+    namespace: &str,
+) -> Result<Deployment, Error> {
+    let deployment_api: Api<Deployment> = Api::namespaced(client, namespace);
+    let deployment = build_deployment(name, namespace, replicas);
+
+    deployment_api
+        .patch(name, &PatchParams::default(), &Patch::Merge(&deployment))
+        .await
+        .map_err(Error::KubeError)
+}
+
 pub async fn delete(client: Client, name: &str, namespace: &str) -> Result<(), Error> {
     let api: Api<Deployment> = Api::namespaced(client, namespace);
     api.delete(name, &DeleteParams::default())
@@ -79,31 +96,62 @@ pub async fn delete(client: Client, name: &str, namespace: &str) -> Result<(), E
     Ok(())
 }
 
-/// Action to be taken upon an `Echo` resource during reconciliation
-enum EchoAction {
-    /// Create the subresources, this includes spawning `n` pods with Echo service
-    Create,
-    /// Delete all subresources created in the `Create` phase
-    Delete,
-    /// This `Echo` resource is in desired state and requires no actions to be taken
-    NoOp,
-}
+impl Echo {
+    fn get_namespace(&self) -> Result<String> {
+        self.namespace().ok_or_else(|| {
+            Error::UserInputError(
+                "Expected Echo resource to be namespaced. Can't deploy to an unknown namespace."
+                    .to_owned(),
+            )
+        })
+    }
+    async fn reconcile(&self, ctx: Arc<Context>) -> Result<()> {
+        let deployment_api: Api<Deployment> =
+            Api::namespaced(ctx.client.clone(), &self.get_namespace()?);
+        let current_deployment = match deployment_api.get(&self.name_any()).await {
+            Ok(deployment) => deployment,
+            Err(_) => {
+                create(
+                    ctx.client.clone(),
+                    &self.name_any(),
+                    self.spec.replicas,
+                    &self.get_namespace()?,
+                )
+                .await?;
+                return Ok(());
+            }
+        };
 
-/// Determines the appropriate action to take for the given `Echo` resource.
-///
-/// This function checks the `Echo` resource's metadata to decide whether the
-/// resource should be deleted, created, or no operation is needed.
-/// - If the `deletion_timestamp` is set, the action is `Delete`.
-/// - If there are no finalizers or the finalizers list is empty, the action is `Create`.
-/// - Otherwise, the action is `NoOp`.
-fn determine_action(echo: &Echo) -> EchoAction {
-    match echo.meta().deletion_timestamp {
-        Some(_) => EchoAction::Delete,
-        None => match echo.meta().finalizers.as_ref() {
-            Some(finalizers) if finalizers.is_empty() => EchoAction::Create,
-            None => EchoAction::Create,
-            _ => EchoAction::NoOp,
-        },
+        match current_deployment.spec {
+            None => {
+                create(
+                    ctx.client.clone(),
+                    &self.name_any(),
+                    self.spec.replicas,
+                    &self.get_namespace()?,
+                )
+                .await?;
+                Ok(())
+            }
+            Some(spec) => match spec.replicas {
+                Some(x) if x == self.spec.replicas => Ok(()),
+                _ => {
+                    patch(
+                        ctx.client.clone(),
+                        &self.name_any(),
+                        self.spec.replicas,
+                        &self.get_namespace()?,
+                    )
+                    .await?;
+                    Ok(())
+                }
+            },
+        }
+    }
+
+    async fn cleanup(&self, ctx: Arc<Context>) -> Result<Action> {
+        delete(ctx.client.clone(), &self.name_any(), &self.get_namespace()?).await?;
+        Ok(Action::await_change())
     }
 }
 
@@ -113,36 +161,24 @@ pub async fn reconcile(echo: Arc<Echo>, ctx: Arc<Context>) -> Result<Action, Err
     Span::current().record("trace_id", field::display(&trace_id));
     let _timer = ctx.metrics.reconcile.count_and_measure(&trace_id);
 
-    let namespace = echo.namespace().ok_or_else(|| {
-        Error::UserInputError(
-            "Expected Echo resource to be namespaced. Can't deploy to an unknown namespace."
-                .to_owned(),
-        )
-    })?;
     let name = echo.name_any();
+    let namespace = echo.get_namespace()?;
     info!("Reconciling Echo \"{name}\" in {namespace}");
 
-    let client: Client = ctx.client.clone();
-    match determine_action(&echo) {
-        EchoAction::Create => {
-            // Adds a finalizer to the `Echo` resource to prevent it from being deleted before
-            finalizer::add(client.clone(), &name, &namespace)
-                .await
-                .map_err(Error::KubeError)?;
-            deploy(client, &name, echo.spec.replicas, &namespace).await?;
-            Ok(Action::requeue(Duration::from_secs(10)))
-        }
-        EchoAction::Delete => {
-            delete(client.clone(), &name, &namespace).await?;
+    let echoes = Api::<Echo>::all(ctx.client.clone());
 
-            // Once the deployment is successfully removed, remove the finalizer to make it possible
-            // for Kubernetes to delete the `Echo` resource.
-            finalizer::delete(client, &name, &namespace)
-                .await
-                .map_err(Error::KubeError)?;
-            Ok(Action::await_change())
+    finalizer(&echoes, ECHO_FINALIZER, echo, |event| async {
+        match event {
+            Event::Apply(echo) => {
+                echo.reconcile(ctx.clone()).await?;
+                Ok(Action::requeue(Duration::from_secs(5 * 60)))
+            }
+            Event::Cleanup(echo) => {
+                echo.cleanup(ctx.clone()).await?;
+                Ok(Action::requeue(Duration::from_secs(5 * 60)))
+            }
         }
-        // The resource is already in desired state, do nothing and re-check after 10 seconds
-        EchoAction::NoOp => Ok(Action::requeue(Duration::from_secs(10))),
-    }
+    })
+    .await
+    .map_err(|e| Error::FinalizerError(Box::new(e)))
 }
