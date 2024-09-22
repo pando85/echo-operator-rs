@@ -4,7 +4,6 @@ use crate::echo::finalizer;
 use crate::error::{Error, Result};
 use crate::telemetry;
 
-use chrono::Utc;
 use k8s_openapi::api::apps::v1::{Deployment, DeploymentSpec};
 use k8s_openapi::api::core::v1::{Container, ContainerPort, PodSpec, PodTemplateSpec};
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::LabelSelector;
@@ -118,7 +117,6 @@ pub async fn reconcile(echo: Arc<Echo>, ctx: Arc<Context>) -> Result<Action, Err
     let client: Client = ctx.client.clone();
 
     let _timer = ctx.metrics.reconcile.count_and_measure(&trace_id);
-    ctx.diagnostics.write().await.last_event = Utc::now();
     // The resource of `Echo` kind is required to have a namespace set. However, it is not guaranteed
     // the resource will have a `namespace` set. Therefore, the `namespace` field on object's metadata
     // is optional and Rust forces the programmer to check for it's existence first.

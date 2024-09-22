@@ -20,12 +20,6 @@ async fn health(_: HttpRequest) -> impl Responder {
     HttpResponse::Ok().json("healthy")
 }
 
-#[get("/")]
-async fn index(c: Data<State>, _req: HttpRequest) -> impl Responder {
-    let d = c.diagnostics().await;
-    HttpResponse::Ok().json(&d)
-}
-
 #[derive(Parser, Debug)]
 #[command(
     name="kaniop",
@@ -81,7 +75,6 @@ async fn main() -> anyhow::Result<()> {
         App::new()
             .app_data(Data::new(state.clone()))
             .wrap(middleware::Logger::default().exclude("/health"))
-            .service(index)
             .service(health)
             .service(metrics)
     })
