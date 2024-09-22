@@ -11,3 +11,7 @@ license-file = "LICENSE.md"
 repository = "https://github.com/pando85/kanidm-operator"
 homepage = "https://github.com/pando85/kanidm-operator"
 readme = "README.md"
+
+[workspace.dependencies]
+clap = "4.5"
+tokio = "1.38"

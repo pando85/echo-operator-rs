@@ -14,7 +14,8 @@ path = "src/main.rs"
 
 [dependencies]
 kaniop_operator = { path = "../../libs/operator", version = "0.0.0" }
-tokio = { version = "1.40", features = ["macros", "rt-multi-thread"] }
+clap = { workspace = true, features = ["std", "derive", "cargo", "env"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 actix-web = "4.9.0"
 futures = "0.3"
 anyhow = "1.0"

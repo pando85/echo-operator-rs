@@ -1,8 +1,45 @@
-use opentelemetry::trace::TraceId;
-use tonic::transport::Channel;
+use std::time::Duration;
+
+use opentelemetry::{
+    trace::{TraceError, TraceId, TracerProvider},
+    KeyValue,
+};
+use opentelemetry_otlp::WithExportConfig;
+use opentelemetry_sdk::{
+    trace::{self, RandomIdGenerator, Sampler},
+    Resource,
+};
+use serde::Serialize;
+use thiserror::Error;
+use tracing::dispatcher::SetGlobalDefaultError;
+use tracing_opentelemetry::OpenTelemetryLayer;
 use tracing_subscriber::{prelude::*, EnvFilter, Registry};
 
-///  Fetch an opentelemetry::trace::TraceId as hex through the full tracing stack
+/// An error type representing various issues that can occur during tracing initialization.
+#[derive(Error, Debug)]
+pub enum Error {
+    /// Error encountered when setting up OpenTelemetry tracing.
+    #[error("TraceError: {0}")]
+    TraceError(#[source] TraceError),
+
+    /// Error encountered when setting the global tracing subscriber.
+    #[error("SetGlobalDefaultError: {0}")]
+    SetGlobalDefaultError(#[source] SetGlobalDefaultError),
+}
+
+/// Fetches the current `opentelemetry::trace::TraceId` as a hexadecimal string.
+///
+/// This function retrieves the `TraceId` by traversing the full tracing stack, from
+/// the current [`tracing::Span`] to its corresponding [`opentelemetry::Context`].
+/// It returns the trace ID associated with the current span.
+///
+/// # Example
+///
+/// ```rust
+/// # use kaniop_operator::telemetry::get_trace_id;
+/// let trace_id = get_trace_id();
+/// println!("Current trace ID: {:?}", trace_id);
+/// ```
 pub fn get_trace_id() -> TraceId {
     use opentelemetry::trace::TraceContextExt as _; // opentelemetry::Context -> opentelemetry::trace::Span
     use tracing_opentelemetry::OpenTelemetrySpanExt as _; // tracing::Span to opentelemetry::Context
@@ -14,47 +51,106 @@ pub fn get_trace_id() -> TraceId {
         .trace_id()
 }
 
-async fn init_tracer() -> opentelemetry::sdk::trace::Tracer {
-    let otlp_endpoint = std::env::var("OPENTELEMETRY_ENDPOINT_URL")
-        .expect("Need a otel tracing collector configured");
+/// Specifies the format of log output, either JSON or plain-text.
+///
+/// This enum derives `clap::ValueEnum` for use in command-line argument parsing,
+/// and is serialized in lowercase when used with `serde`.
+#[derive(clap::ValueEnum, Clone, Debug, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LogFormat {
+    /// JSON-formatted log output.
+    Json,
 
-    let channel = Channel::from_shared(otlp_endpoint)
-        .unwrap()
-        .connect()
-        .await
-        .unwrap();
-
-    opentelemetry_otlp::new_pipeline()
-        .tracing()
-        .with_exporter(
-            opentelemetry_otlp::new_exporter()
-                .tonic()
-                .with_channel(channel),
-        )
-        .with_trace_config(opentelemetry::sdk::trace::config().with_resource(
-            opentelemetry::sdk::Resource::new(vec![opentelemetry::KeyValue::new(
-                "service.name",
-                "doc-controller",
-            )]),
-        ))
-        .install_batch(opentelemetry::runtime::Tokio)
-        .unwrap()
+    /// Plain-text log output.
+    Text,
 }
 
-/// Initialize loging and tracing
-pub async fn init(tracing: bool) {
-    let logger = tracing_subscriber::fmt::layer().compact();
-    let env_filter = EnvFilter::try_from_default_env()
-        .or(EnvFilter::try_new("info"))
-        .unwrap();
+/// Initializes logging and tracing subsystems.
+///
+/// This asynchronous function configures and initializes logging and tracing
+/// according to the provided format and filtering parameters. It supports
+/// both JSON and plain-text log formats, as well as OpenTelemetry tracing
+/// when a tracing URL is specified. If OpenTelemetry is enabled, traces are
+/// sent to the given URL using OTLP over gRPC.
+///
+/// # Example
+///
+/// ```rust
+/// # use kaniop_operator::telemetry::{init, LogFormat};
+///
+/// #[tokio::main]
+/// async fn main() -> Result<(), Box<dyn std::error::Error>> {
+///     // Initialize tracing with a JSON log format and a log filter of "info".
+///     let opentelemetry_endpoint_url = std::env::var("OPENTELEMETRY_ENDPOINT_URL").ok();
+///     init("info", LogFormat::Text, opentelemetry_endpoint_url.as_deref(), 0.1)
+///         .await?;
+///
+///     // Application logic here...
+///
+///     Ok(())
+/// }
+/// ```
+///
+/// In this example, the logging system is initialized with a plain-text format,
+/// an `info` log level filter, and tracing disabled (as `None` is passed for the `some_tracing_url`).
+///
+/// # OpenTelemetry Integration
+///
+/// When a tracing URL is provided, OpenTelemetry tracing is configured using
+/// OTLP (OpenTelemetry Protocol) over gRPC. The function creates a tracing pipeline
+/// with a ratio-based trace sampler and a default random trace ID generator.
+/// Traces will be sampled based on the `trace_ratio` provided.
+///
+/// The function sets a global tracing subscriber using the combination of
+/// the [`tracing_subscriber`] logger and optionally the OpenTelemetry tracer if enabled.
+///
+/// If the tracing subsystem is successfully configured, the function returns
+/// `Ok(())`, otherwise an appropriate error is returned.
+pub async fn init(
+    log_filter: &str,
+    log_format: LogFormat,
+    tracing_url: Option<&str>,
+    trace_ratio: f64,
+) -> Result<(), Error> {
+    let logger = match log_format {
+        LogFormat::Json => tracing_subscriber::fmt::layer().json().compact().boxed(),
+        LogFormat::Text => tracing_subscriber::fmt::layer().compact().boxed(),
+    };
 
-    let collector = Registry::default().with(logger).with(env_filter);
+    let filter = EnvFilter::new(log_filter);
 
-    if tracing {
-        let telemetry = tracing_opentelemetry::layer().with_tracer(init_tracer().await);
-        tracing::subscriber::set_global_default(collector.with(telemetry)).unwrap();
+    let collector = Registry::default().with(logger).with(filter);
+
+    if let Some(url) = tracing_url {
+        let provider = opentelemetry_otlp::new_pipeline()
+            .tracing()
+            .with_exporter(
+                opentelemetry_otlp::new_exporter()
+                    .tonic()
+                    .with_endpoint(url)
+                    .with_timeout(Duration::from_secs(3)),
+            )
+            .with_trace_config(
+                trace::Config::default()
+                    .with_sampler(Sampler::TraceIdRatioBased(trace_ratio))
+                    .with_id_generator(RandomIdGenerator::default())
+                    .with_max_events_per_span(64)
+                    .with_max_attributes_per_span(16)
+                    .with_max_events_per_span(16)
+                    .with_resource(Resource::new(vec![KeyValue::new("service.name", "kaniop")])),
+            )
+            .install_batch(opentelemetry_sdk::runtime::Tokio)
+            .map_err(Error::TraceError)?;
+        let tracer = provider
+            .tracer_builder("opentelemetry-otlp")
+            .with_version(env!("CARGO_PKG_VERSION"))
+            .build();
+
+        let telemetry = OpenTelemetryLayer::new(tracer);
+        tracing::subscriber::set_global_default(collector.with(telemetry))
+            .map_err(Error::SetGlobalDefaultError)
     } else {
-        tracing::subscriber::set_global_default(collector).unwrap();
+        tracing::subscriber::set_global_default(collector).map_err(Error::SetGlobalDefaultError)
     }
 }
 
@@ -66,7 +162,15 @@ mod test {
     #[ignore = "requires a trace exporter"]
     async fn get_trace_id_returns_valid_traces() {
         use super::*;
-        super::init(true).await;
+        let opentelemetry_endpoint_url = std::env::var("OPENTELEMETRY_ENDPOINT_URL").ok();
+        super::init(
+            "info",
+            LogFormat::Text,
+            opentelemetry_endpoint_url.as_deref(),
+            0.1,
+        )
+        .await
+        .unwrap();
         #[tracing::instrument(name = "test_span")] // need to be in an instrumented fn
         fn test_trace_id() -> TraceId {
             get_trace_id()

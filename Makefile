@@ -64,7 +64,7 @@ build: crd-code release
 .PHONY: release
 release: crd-code
 release: CARGO_BUILD_PARAMS += --locked
-release:	## generate $(PKG_BASE_NAME).tar.gz with binary
+release:	## compile release binary
 	@if [ "$(CARGO_TARGET)" != "$(shell uname -m)-unknown-linux-gnu" ]; then  \
 		if [ "$${CARGO_TARGET_DIR}" != "$${CARGO_TARGET_DIR#/}" ]; then  \
 			echo CARGO_TARGET_DIR should be relative for cross compiling; \
@@ -115,6 +115,15 @@ push-image-arm64: CARGO_TARGET=aarch64-unknown-linux-gnu
 push-images: crd-code $(IMAGE_ARCHITECTURES:%=push-image-%)
 push-images:	## push images for all architectures
 
+.PHONY: test-integration
+test-integration:	## run integration tests
+	@docker run -d --name tempo \
+		-v $(shell pwd)/test/integration/tempo/tempo.yaml:/etc/tempo.yaml \
+		-p 4317:4317 \
+		grafana/tempo:latest -config.file=/etc/tempo.yaml
+	OPENTELEMETRY_ENDPOINT_URL=localhost:4317 cargo test -- --ignored
+	@docker rm -f tempo
+
 .PHONY: e2e
 e2e: image
 e2e:	## run e2e tests
@@ -132,6 +141,7 @@ e2e:	## run e2e tests
 			sleep 5; \
 		fi \
 	done
+
 .PHONY: delete-kind
 delete-kind:
 	kind delete cluster --name $(KIND_CLUSTER_NAME)
