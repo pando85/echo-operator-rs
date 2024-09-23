@@ -6,23 +6,99 @@ spec:
   group: example.com
   names:
     kind: Echo
-    plural: echoes  # If not specified, Kubernetes would assume the plural is "Echos"
+    plural: echoes
     singular: echo
     shortNames:
       - echo
   scope: Namespaced
   versions:
     - name: v1
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - jsonPath: .status.conditions[?(@.type=="Ready")].status
+          name: Ready
+          type: string
       served: true
       storage: true
       schema:
         openAPIV3Schema:
           type: object
+          required:
+            - metadata
+            - spec
           properties:
-            spec:  # There is only one (required) field named "replicas" specifying how many pods are created by the Operator
+            apiVersion:
+              description: |-
+                APIVersion defines the versioned schema of this representation of an object.
+                Servers should convert recognized schemas to the latest internal value, and
+                may reject unrecognized values.
+                More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+              type: string
+            kind:
+              description: |-
+                Kind is a string value representing the REST resource this object represents.
+                Servers may infer this from the endpoint the client submits requests to.
+                Cannot be updated.
+                In CamelCase.
+                More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+              type: string
+            metadata:
               type: object
+            spec:
+              type: object
+              required:
+                - replicas
               properties:
                 replicas:
                   type: integer
                   format: int32
-              required: ["replicas"]
+            status:
+              type: object
+              properties:
+                availableReplicas:
+                  type: integer
+                  format: int32
+                  description: "The number of available replicas."
+                conditions:
+                  type: array
+                  description: "List of status conditions for the deployment."
+                  items:
+                    type: object
+                    properties:
+                      lastTransitionTime:
+                        type: string
+                        format: date-time
+                        description: "The last time the condition transitioned from one status to another."
+                      lastUpdateTime:
+                        type: string
+                        format: date-time
+                        description: "The last time this condition was updated."
+                      message:
+                        type: string
+                        description: "A human-readable message indicating details about the transition."
+                      reason:
+                        type: string
+                        description: "A unique, one-word, CamelCase reason for the condition's last transition."
+                      status:
+                        type: string
+                        description: "The status of the condition (e.g., True, False, Unknown)."
+                      type:
+                        type: string
+                        description: "The type of the condition (e.g., Available, Progressing, etc.)."
+                observedGeneration:
+                  type: integer
+                  format: int32
+                  description: "The most recent generation observed by the controller."
+                readyReplicas:
+                  type: integer
+                  format: int32
+                  description: "The number of replicas that are ready."
+                replicas:
+                  type: integer
+                  format: int32
+                  description: "The number of desired replicas."
+                updatedReplicas:
+                  type: integer
+                  format: int32
+                  description: "The number of replicas that have been updated to the latest revision."

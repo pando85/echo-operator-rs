@@ -38,7 +38,7 @@ kopium:
 .PHONY: $(TARGET_CRD_DIR)/%.rs
 $(TARGET_CRD_DIR)/%.rs: $(CRD_DIR)/crd-%.yaml
 	@echo "Generating $@ from $<"
-	@kopium -f $< > $@
+	@kopium --derive Default -f $< > $@
 
 .NOTPARALLEL: crd-code
 .PHONY: crd-code
