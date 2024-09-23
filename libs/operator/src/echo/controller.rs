@@ -4,6 +4,7 @@ use crate::echo::reconcile::reconcile;
 use crate::error::Error;
 
 use futures::StreamExt;
+use k8s_openapi::api::apps::v1::Deployment;
 use kube::api::{Api, ListParams};
 use kube::client::Client;
 use kube::runtime::controller::{Action, Controller};
@@ -29,8 +30,11 @@ pub async fn run(state: State) {
         std::process::exit(1);
     }
 
+    let deployment = Api::<Deployment>::all(client.clone());
+
     info!("Starting echoes controller");
     Controller::new(echoes, Config::default().any_semantic())
+        .owns(deployment, Config::default())
         .shutdown_on_signal()
         .run(reconcile, error_policy, state.to_context(client))
         .filter_map(|x| async move { std::result::Result::ok(x) })

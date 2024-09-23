@@ -9,7 +9,7 @@ use std::sync::Arc;
 use k8s_openapi::api::apps::v1::{Deployment, DeploymentSpec};
 use k8s_openapi::api::core::v1::{Container, ContainerPort, PodSpec, PodTemplateSpec};
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::LabelSelector;
-use kube::api::{Api, DeleteParams, ObjectMeta, Patch, PatchParams, PostParams};
+use kube::api::{Api, ObjectMeta, Patch, PatchParams, Resource};
 use kube::client::Client;
 use kube::runtime::controller::Action;
 use kube::runtime::finalizer::{finalizer, Event};
@@ -20,20 +20,22 @@ use tracing::{field, info, instrument, Span};
 
 pub static ECHO_FINALIZER: &str = "echoes.example.com";
 
-// watch deployment and update status
+async fn patch(client: Client, echo: &Echo) -> Result<Deployment, Error> {
+    let deployment_api: Api<Deployment> = Api::namespaced(client, &echo.get_namespace()?);
+    let owner_references = echo.controller_owner_ref(&()).map(|oref| vec![oref]);
 
-fn build_deployment(name: &str, namespace: &str, replicas: i32) -> Deployment {
     let mut labels: BTreeMap<String, String> = BTreeMap::new();
-    labels.insert("app".to_owned(), name.to_owned());
-    Deployment {
+    labels.insert("app".to_owned(), echo.name_any());
+    let deployment = Deployment {
         metadata: ObjectMeta {
-            name: Some(name.to_owned()),
-            namespace: Some(namespace.to_owned()),
+            name: Some(echo.name_any()),
+            namespace: Some(echo.get_namespace()?),
             labels: Some(labels.clone()),
+            owner_references,
             ..ObjectMeta::default()
         },
         spec: Some(DeploymentSpec {
-            replicas: Some(replicas),
+            replicas: Some(echo.spec.replicas),
             selector: LabelSelector {
                 match_expressions: None,
                 match_labels: Some(labels.clone()),
@@ -41,7 +43,7 @@ fn build_deployment(name: &str, namespace: &str, replicas: i32) -> Deployment {
             template: PodTemplateSpec {
                 spec: Some(PodSpec {
                     containers: vec![Container {
-                        name: name.to_owned(),
+                        name: echo.name_any(),
                         image: Some("inanimate/echo-server:latest".to_owned()),
                         ports: Some(vec![ContainerPort {
                             container_port: 8080,
@@ -59,59 +61,22 @@ fn build_deployment(name: &str, namespace: &str, replicas: i32) -> Deployment {
             ..DeploymentSpec::default()
         }),
         ..Deployment::default()
-    }
-}
-
-pub async fn create(
-    client: Client,
-    name: &str,
-    replicas: i32,
-    namespace: &str,
-) -> Result<Deployment, Error> {
-    let deployment = build_deployment(name, namespace, replicas);
-
-    let deployment_api: Api<Deployment> = Api::namespaced(client, namespace);
-    deployment_api
-        .create(&PostParams::default(), &deployment)
-        .await
-        .map_err(Error::KubeError)
-}
-
-async fn patch(
-    client: Client,
-    name: &str,
-    replicas: i32,
-    namespace: &str,
-) -> Result<Deployment, Error> {
-    let deployment_api: Api<Deployment> = Api::namespaced(client, namespace);
-    let deployment = build_deployment(name, namespace, replicas);
+    };
 
     deployment_api
-        .patch(name, &PatchParams::default(), &Patch::Merge(&deployment))
+        .patch(
+            &echo.name_any(),
+            &PatchParams::apply("echoes.example.com").force(),
+            &Patch::Apply(&deployment),
+        )
         .await
         .map_err(Error::KubeError)
-}
-
-pub async fn delete(client: Client, name: &str, namespace: &str) -> Result<(), Error> {
-    let api: Api<Deployment> = Api::namespaced(client, namespace);
-    api.delete(name, &DeleteParams::default())
-        .await
-        .map_err(Error::KubeError)?;
-    Ok(())
 }
 
 impl Echo {
     fn get_namespace(&self) -> Result<String> {
-        self.namespace().ok_or_else(|| {
-            Error::UserInputError(
-                "Expected Echo resource to be namespaced. Can't deploy to an unknown namespace."
-                    .to_owned(),
-            )
-        })
-    }
-
-    fn get_replicas(&self) -> Option<i32> {
-        self.status.as_ref().and_then(|s| s.replicas)
+        self.namespace()
+            .ok_or_else(|| Error::MissingObjectKey(".metadata.name"))
     }
 
     async fn update_replicas(&self, replicas: i32, ctx: Arc<Context>) -> Result<()> {
@@ -124,7 +89,7 @@ impl Echo {
                 ..EchoStatus::default()
             }
         }));
-        let patch = PatchParams::apply("kaniop").force();
+        let patch = PatchParams::apply("echoes.example.com").force();
         let _o = echo
             .patch_status(&self.name_any(), &patch, &new_status)
             .await
@@ -132,83 +97,10 @@ impl Echo {
         Ok(())
     }
 
-    // reconcile based on deployment instead of status
-    // async fn reconcile(&self, ctx: Arc<Context>) -> Result<()> {
-    //     let deployment_api: Api<Deployment> =
-    //         Api::namespaced(ctx.client.clone(), &self.get_namespace()?);
-    //     let current_deployment = match deployment_api.get(&self.name_any()).await {
-    //         Ok(deployment) => deployment,
-    //         Err(_) => {
-    //             create(
-    //                 ctx.client.clone(),
-    //                 &self.name_any(),
-    //                 self.spec.replicas,
-    //                 &self.get_namespace()?,
-    //             )
-    //             .await?;
-    //             return Ok(());
-    //         }
-    //     };
-
-    //     match current_deployment.spec {
-    //         None => {
-    //             create(
-    //                 ctx.client.clone(),
-    //                 &self.name_any(),
-    //                 self.spec.replicas,
-    //                 &self.get_namespace()?,
-    //             )
-    //             .await?;
-    //             Ok(())
-    //         }
-    //         Some(spec) => match spec.replicas {
-    //             Some(x) if x == self.spec.replicas => Ok(()),
-    //             _ => {
-    //                 patch(
-    //                     ctx.client.clone(),
-    //                     &self.name_any(),
-    //                     self.spec.replicas,
-    //                     &self.get_namespace()?,
-    //                 )
-    //                 .await?;
-    //                 Ok(())
-    //             }
-    //         },
-    //     }
-    // }
-
     async fn reconcile(&self, ctx: Arc<Context>) -> Result<()> {
-        match self.get_replicas() {
-            Some(r) if r == self.spec.replicas => Ok(()),
-            Some(_) => {
-                patch(
-                    ctx.client.clone(),
-                    &self.name_any(),
-                    self.spec.replicas,
-                    &self.get_namespace()?,
-                )
-                .await?;
-                self.update_replicas(self.spec.replicas, ctx).await?;
-                Ok(())
-            }
-            None => {
-                // TODO: reconcile replicas and create if needed
-                create(
-                    ctx.client.clone(),
-                    &self.name_any(),
-                    self.spec.replicas,
-                    &self.get_namespace()?,
-                )
-                .await?;
-                self.update_replicas(self.spec.replicas, ctx).await?;
-                Ok(())
-            }
-        }
-    }
-
-    async fn cleanup(&self, ctx: Arc<Context>) -> Result<Action> {
-        delete(ctx.client.clone(), &self.name_any(), &self.get_namespace()?).await?;
-        Ok(Action::await_change())
+        patch(ctx.client.clone(), self).await?;
+        self.update_replicas(self.spec.replicas, ctx).await?;
+        Ok(())
     }
 }
 
@@ -230,8 +122,8 @@ pub async fn reconcile(echo: Arc<Echo>, ctx: Arc<Context>) -> Result<Action, Err
                 echo.reconcile(ctx.clone()).await?;
                 Ok(Action::requeue(Duration::from_secs(5 * 60)))
             }
-            Event::Cleanup(echo) => {
-                echo.cleanup(ctx.clone()).await?;
+            Event::Cleanup(_) => {
+                // Kubernetes handles deletions
                 Ok(Action::requeue(Duration::from_secs(5 * 60)))
             }
         }
@@ -264,7 +156,7 @@ mod test {
     async fn finalized_echo_create() {
         let (testctx, fakeserver) = Context::test();
         let echo = Echo::test().finalized();
-        let mocksrv = fakeserver.run(Scenario::NonReconciledEchoCreate(echo.clone()));
+        let mocksrv = fakeserver.run(Scenario::EchoPatch(echo.clone()));
         reconcile(Arc::new(echo), testctx)
             .await
             .expect("reconciler");
@@ -275,7 +167,7 @@ mod test {
     async fn finalized_echo_causes_status_patch() {
         let (testctx, fakeserver) = Context::test();
         let echo = Echo::test_with_status().finalized();
-        let mocksrv = fakeserver.run(Scenario::NoOp());
+        let mocksrv = fakeserver.run(Scenario::EchoPatch(echo.clone()));
         reconcile(Arc::new(echo), testctx)
             .await
             .expect("reconciler");
@@ -286,7 +178,7 @@ mod test {
     async fn finalized_echo_with_replicas_causes_patch() {
         let (testctx, fakeserver) = Context::test();
         let echo = Echo::test_with_status().finalized().change_replicas(3);
-        let scenario = Scenario::ChangeReplicasThenStatusPatch(echo.clone());
+        let scenario = Scenario::EchoPatch(echo.clone());
         let mocksrv = fakeserver.run(scenario);
         reconcile(Arc::new(echo), testctx)
             .await

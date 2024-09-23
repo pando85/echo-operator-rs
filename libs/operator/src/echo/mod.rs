@@ -14,7 +14,6 @@ mod test {
     use http::{Request, Response};
     use k8s_openapi::api::apps::v1::Deployment;
     use kube::{client::Body, Client, Resource, ResourceExt};
-    use serde_json::json;
 
     impl Echo {
         /// This doesn't cause nothing
@@ -79,12 +78,8 @@ mod test {
     pub enum Scenario {
         /// objects without finalizers will get a finalizer applied (and not call the apply loop)
         FinalizerCreation(Echo),
-        /// objects non reconciled will cause a create
-        NonReconciledEchoCreate(Echo),
-        /// object that is already reconciled
-        NoOp(),
-        /// finalized objects with hide set causes both an event and then a hide patch
-        ChangeReplicasThenStatusPatch(Echo),
+        /// objects changes will cause a patch
+        EchoPatch(Echo),
         /// finalized objects "with errors" (i.e. the "illegal" object) will short circuit the apply loop
         RadioSilence,
         /// objects with a deletion timestamp will run the cleanup loop sending event and removing the finalizer
@@ -114,15 +109,7 @@ mod test {
                 // moving self => one scenario per test
                 match scenario {
                     Scenario::FinalizerCreation(echo) => self.handle_finalizer_creation(echo).await,
-                    Scenario::NonReconciledEchoCreate(echo) => {
-                        self.handle_echo_create(echo.clone())
-                            .await
-                            .unwrap()
-                            .handle_status_patch(echo)
-                            .await
-                    }
-                    Scenario::NoOp() => self.handle_do_nothing().await,
-                    Scenario::ChangeReplicasThenStatusPatch(echo) => {
+                    Scenario::EchoPatch(echo) => {
                         self.handle_echo_patch(echo.clone())
                             .await
                             .unwrap()
@@ -130,13 +117,7 @@ mod test {
                             .await
                     }
                     Scenario::RadioSilence => Ok(self),
-                    Scenario::Cleanup(echo) => {
-                        self.handle_echo_delete(echo.clone())
-                            .await
-                            .unwrap()
-                            .handle_finalizer_removal(echo)
-                            .await
-                    }
+                    Scenario::Cleanup(echo) => self.handle_finalizer_removal(echo).await,
                 }
                 .expect("scenario completed without errors");
             })
@@ -193,40 +174,13 @@ mod test {
             Ok(self)
         }
 
-        async fn handle_do_nothing(self) -> Result<Self> {
-            Ok(self)
-        }
-
-        async fn handle_echo_create(mut self, echo: Echo) -> Result<Self> {
-            let (request, send) = self.0.next_request().await.expect("service not called");
-            assert_eq!(request.method(), http::Method::POST);
-            assert_eq!(
-                request.uri().to_string(),
-                "/apis/apps/v1/namespaces/default/deployments?"
-            );
-
-            let req_body = request.into_body().collect_bytes().await.unwrap();
-            let json: serde_json::Value =
-                serde_json::from_slice(&req_body).expect("patch object is json");
-            let deployment: Deployment = serde_json::from_value(json).expect("valid deployment");
-            assert_eq!(
-                deployment.clone().spec.unwrap().replicas.unwrap(),
-                echo.spec.replicas,
-                "deployment replicas equal to echo spec replicas"
-            );
-            let response = serde_json::to_vec(&deployment).unwrap();
-            // pass through echo "patch accepted"
-            send.send_response(Response::builder().body(Body::from(response)).unwrap());
-            Ok(self)
-        }
-
         async fn handle_echo_patch(mut self, echo: Echo) -> Result<Self> {
             let (request, send) = self.0.next_request().await.expect("service not called");
             assert_eq!(request.method(), http::Method::PATCH);
             assert_eq!(
                 request.uri().to_string(),
                 format!(
-                    "/apis/apps/v1/namespaces/default/deployments/{}?",
+                    "/apis/apps/v1/namespaces/default/deployments/{}?&force=true&fieldManager=echoes.example.com",
                     echo.name_any()
                 )
             );
@@ -241,27 +195,6 @@ mod test {
                 "deployment replicas equal to echo spec replicas"
             );
             let response = serde_json::to_vec(&deployment).unwrap();
-            // pass through echo "patch accepted"
-            send.send_response(Response::builder().body(Body::from(response)).unwrap());
-            Ok(self)
-        }
-
-        async fn handle_echo_delete(mut self, echo: Echo) -> Result<Self> {
-            let (request, send) = self.0.next_request().await.expect("service not called");
-            assert_eq!(request.method(), http::Method::DELETE);
-            assert_eq!(
-                request.uri().to_string(),
-                format!(
-                    "/apis/apps/v1/namespaces/default/deployments/{}?",
-                    echo.name_any()
-                )
-            );
-            let req_body = request.into_body().collect_bytes().await.unwrap();
-            let json: serde_json::Value =
-                serde_json::from_slice(&req_body).expect("delete object is json");
-            let expected = json!({});
-            assert_eq!(json, expected);
-            let response = serde_json::to_vec(&json).unwrap();
             // pass through echo "patch accepted"
             send.send_response(Response::builder().body(Body::from(response)).unwrap());
             Ok(self)
@@ -273,7 +206,7 @@ mod test {
             assert_eq!(
                 request.uri().to_string(),
                 format!(
-                    "/apis/example.com/v1/namespaces/default/echoes/{}/status?&force=true&fieldManager=kaniop",
+                    "/apis/example.com/v1/namespaces/default/echoes/{}/status?&force=true&fieldManager=echoes.example.com",
                     echo.name_any()
                 )
             );

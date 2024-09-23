@@ -13,12 +13,8 @@ pub enum Error {
     // so boxing this error to break cycles
     FinalizerError(#[source] Box<kube::runtime::finalizer::Error<Error>>),
 
-    /// Error in user input or Echo resource definition, typically missing fields.
-    #[error("Invalid Echo CRD: {0}")]
-    UserInputError(String),
-
-    #[error("IllegalDocument")]
-    IllegalDocument,
+    #[error("MissingObjectKey: {0}")]
+    MissingObjectKey(&'static str),
 
     #[error("InvalidTraceId")]
     InvalidTraceId,
