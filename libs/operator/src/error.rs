@@ -14,6 +14,9 @@ pub enum Error {
     FinalizerError(#[source] Box<kube::runtime::finalizer::Error<Error>>),
 
     #[error("MissingObjectKey: {0}")]
+    MissingObject(&'static str),
+
+    #[error("MissingObjectKey: {0}")]
     MissingObjectKey(&'static str),
 
     #[error("InvalidTraceId")]

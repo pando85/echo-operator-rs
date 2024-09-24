@@ -8,11 +8,14 @@ mod test {
     use crate::echo::reconcile::ECHO_FINALIZER;
     use crate::error::Result;
 
+    use std::hash::Hash;
     use std::sync::Arc;
 
     use assert_json_diff::assert_json_include;
     use http::{Request, Response};
     use k8s_openapi::api::apps::v1::Deployment;
+    use kube::runtime::reflector::store::Writer;
+    use kube::runtime::reflector::Lookup;
     use kube::{client::Body, Client, Resource, ResourceExt};
 
     impl Echo {
@@ -76,8 +79,6 @@ mod test {
 
     /// Scenarios we test for in ApiServerVerifier
     pub enum Scenario {
-        /// objects without finalizers will get a finalizer applied (and not call the apply loop)
-        FinalizerCreation(Echo),
         /// objects changes will cause a patch
         EchoPatch(Echo),
         /// finalized objects "with errors" (i.e. the "illegal" object) will short circuit the apply loop
@@ -108,45 +109,12 @@ mod test {
             tokio::spawn(async move {
                 // moving self => one scenario per test
                 match scenario {
-                    Scenario::FinalizerCreation(echo) => self.handle_finalizer_creation(echo).await,
-                    Scenario::EchoPatch(echo) => {
-                        self.handle_echo_patch(echo.clone())
-                            .await
-                            .unwrap()
-                            .handle_status_patch(echo)
-                            .await
-                    }
+                    Scenario::EchoPatch(echo) => self.handle_echo_patch(echo.clone()).await,
                     Scenario::RadioSilence => Ok(self),
                     Scenario::Cleanup(echo) => self.handle_finalizer_removal(echo).await,
                 }
                 .expect("scenario completed without errors");
             })
-        }
-
-        // chainable scenario handlers
-        async fn handle_finalizer_creation(mut self, echo: Echo) -> Result<Self> {
-            let (request, send) = self.0.next_request().await.expect("service not called");
-            // We expect a json patch to the specified echo adding our finalizer
-            assert_eq!(request.method(), http::Method::PATCH);
-            assert_eq!(
-                request.uri().to_string(),
-                format!(
-                    "/apis/example.com/v1/namespaces/default/echoes/{}?",
-                    echo.name_any()
-                )
-            );
-            let expected_patch = serde_json::json!([
-                { "op": "test", "path": "/metadata/finalizers", "value": null },
-                { "op": "add", "path": "/metadata/finalizers", "value": vec![ECHO_FINALIZER] }
-            ]);
-            let req_body = request.into_body().collect_bytes().await.unwrap();
-            let runtime_patch: serde_json::Value =
-                serde_json::from_slice(&req_body).expect("valid echo from runtime");
-            assert_json_include!(actual: runtime_patch, expected: expected_patch);
-
-            let response = serde_json::to_vec(&echo.finalized()).unwrap(); // respond as the apiserver would have
-            send.send_response(Response::builder().body(Body::from(response)).unwrap());
-            Ok(self)
         }
 
         async fn handle_finalizer_removal(mut self, echo: Echo) -> Result<Self> {
@@ -199,35 +167,12 @@ mod test {
             send.send_response(Response::builder().body(Body::from(response)).unwrap());
             Ok(self)
         }
-
-        async fn handle_status_patch(mut self, echo: Echo) -> Result<Self> {
-            let (request, send) = self.0.next_request().await.expect("service not called");
-            assert_eq!(request.method(), http::Method::PATCH);
-            assert_eq!(
-                request.uri().to_string(),
-                format!(
-                    "/apis/example.com/v1/namespaces/default/echoes/{}/status?&force=true&fieldManager=echoes.example.com",
-                    echo.name_any()
-                )
-            );
-            let req_body = request.into_body().collect_bytes().await.unwrap();
-            let json: serde_json::Value =
-                serde_json::from_slice(&req_body).expect("patch_status object is json");
-            let status_json = json.get("status").expect("status object").clone();
-            let status: EchoStatus = serde_json::from_value(status_json).expect("valid status");
-            assert_eq!(
-                status.replicas.unwrap(),
-                echo.spec.replicas,
-                "status.hidden iff echo.spec.hide"
-            );
-            let response = serde_json::to_vec(&echo.with_status(status)).unwrap();
-            // pass through echo "patch accepted"
-            send.send_response(Response::builder().body(Body::from(response)).unwrap());
-            Ok(self)
-        }
     }
 
-    impl Context {
+    impl<K: 'static + Lookup + Clone> Context<K>
+    where
+        K::DynamicType: Hash + Eq + Clone + Default,
+    {
         // Create a test context with a mocked kube client, locally registered metrics and default diagnostics
         pub fn test() -> (Arc<Self>, ApiServerVerifier) {
             let (mock_service, handle) = tower_test::mock::pair::<Request<Body>, Response<Body>>();
@@ -235,6 +180,7 @@ mod test {
             let ctx = Self {
                 client: mock_client,
                 metrics: Arc::default(),
+                store: Arc::new(Writer::default().as_reader()),
             };
             (Arc::new(ctx), ApiServerVerifier(handle))
         }

@@ -1,4 +1,3 @@
-use crate::crd::echo::Echo;
 use crate::error::Error;
 
 use kube::ResourceExt;
@@ -84,10 +83,10 @@ impl ReconcileMetrics {
         self
     }
 
-    pub fn set_failure(&self, doc: &Echo, e: &Error) {
+    pub fn set_failure<K: ResourceExt>(&self, obj: &Arc<K>, e: &Error) {
         self.failures
             .get_or_create(&ErrorLabels {
-                instance: doc.name_any(),
+                instance: obj.name_any(),
                 error: e.metric_label(),
             })
             .inc();

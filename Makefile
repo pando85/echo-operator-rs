@@ -121,8 +121,10 @@ test-integration:	## run integration tests
 		-v $(shell pwd)/test/integration/tempo/tempo.yaml:/etc/tempo.yaml \
 		-p 4317:4317 \
 		grafana/tempo:latest -config.file=/etc/tempo.yaml
-	OPENTELEMETRY_ENDPOINT_URL=localhost:4317 cargo test -- --ignored
-	@docker rm -f tempo
+	OPENTELEMETRY_ENDPOINT_URL=localhost:4317 cargo test -- --ignored; \
+		STATUS=$$?; \
+		docker rm -f tempo >/dev/null 2>&1; \
+		exit $$STATUS
 
 .PHONY: e2e
 e2e: image

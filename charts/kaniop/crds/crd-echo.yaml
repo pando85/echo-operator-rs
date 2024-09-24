@@ -19,6 +19,12 @@ spec:
         - jsonPath: .status.conditions[?(@.type=="Ready")].status
           name: Ready
           type: string
+        - jsonPath: .status.replicas
+          name: Replicas
+          type: string
+        - jsonPath: .status.readyReplicas
+          name: Ready Replicas
+          type: string
       served: true
       storage: true
       schema:
@@ -59,46 +65,20 @@ spec:
                 availableReplicas:
                   type: integer
                   format: int32
-                  description: "The number of available replicas."
-                conditions:
-                  type: array
-                  description: "List of status conditions for the deployment."
-                  items:
-                    type: object
-                    properties:
-                      lastTransitionTime:
-                        type: string
-                        format: date-time
-                        description: "The last time the condition transitioned from one status to another."
-                      lastUpdateTime:
-                        type: string
-                        format: date-time
-                        description: "The last time this condition was updated."
-                      message:
-                        type: string
-                        description: "A human-readable message indicating details about the transition."
-                      reason:
-                        type: string
-                        description: "A unique, one-word, CamelCase reason for the condition's last transition."
-                      status:
-                        type: string
-                        description: "The status of the condition (e.g., True, False, Unknown)."
-                      type:
-                        type: string
-                        description: "The type of the condition (e.g., Available, Progressing, etc.)."
+                  description: The number of available replicas.
                 observedGeneration:
                   type: integer
-                  format: int32
-                  description: "The most recent generation observed by the controller."
+                  format: int64
+                  description: The most recent generation observed by the controller.
                 readyReplicas:
                   type: integer
                   format: int32
-                  description: "The number of replicas that are ready."
+                  description: The number of replicas that are ready.
                 replicas:
                   type: integer
                   format: int32
-                  description: "The number of desired replicas."
+                  description: The number of desired replicas.
                 updatedReplicas:
                   type: integer
                   format: int32
-                  description: "The number of replicas that have been updated to the latest revision."
+                  description: The number of replicas that have been updated to the latest revision.
