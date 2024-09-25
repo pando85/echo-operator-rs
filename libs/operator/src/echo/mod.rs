@@ -5,13 +5,11 @@ pub mod reconcile;
 mod test {
     use crate::controller::Context;
     use crate::crd::echo::{Echo, EchoSpec, EchoStatus};
-    use crate::echo::reconcile::ECHO_FINALIZER;
     use crate::error::Result;
 
     use std::hash::Hash;
     use std::sync::Arc;
 
-    use assert_json_diff::assert_json_include;
     use http::{Request, Response};
     use k8s_openapi::api::apps::v1::Deployment;
     use kube::runtime::reflector::store::Writer;
@@ -19,29 +17,11 @@ mod test {
     use kube::{client::Body, Client, Resource, ResourceExt};
 
     impl Echo {
-        /// This doesn't cause nothing
-        // /// A echo that will cause the reconciler to fail
-        // pub fn illegal() -> Self {
-        //     let mut d = Echo::new("illegal", echo_spec_default());
-        //     d.meta_mut().namespace = Some("default".into());
-        //     d
-        // }
-
         /// A non updated normal test echo
-        pub fn test() -> Self {
+        pub fn test(status: Option<EchoStatus>) -> Self {
             let mut e = Echo::new("test", EchoSpec { replicas: 1 });
             e.meta_mut().namespace = Some("default".into());
-            e
-        }
-
-        /// An updated normal test echo
-        pub fn test_with_status() -> Self {
-            let mut e = Echo::new("test", EchoSpec { replicas: 1 });
-            e.status = Some(EchoStatus {
-                replicas: Some(1),
-                ..EchoStatus::default()
-            });
-            e.meta_mut().namespace = Some("default".into());
+            e.status = status;
             e
         }
 
@@ -57,12 +37,6 @@ mod test {
             let now: DateTime<Utc> = Utc.with_ymd_and_hms(2017, 4, 2, 12, 50, 32).unwrap();
             use k8s_openapi::apimachinery::pkg::apis::meta::v1::Time;
             self.meta_mut().deletion_timestamp = Some(Time(now));
-            self
-        }
-
-        /// Modify a echo to have the expected finalizer
-        pub fn finalized(mut self) -> Self {
-            self.finalizers_mut().push(ECHO_FINALIZER.to_string());
             self
         }
 
@@ -83,8 +57,6 @@ mod test {
         EchoPatch(Echo),
         /// finalized objects "with errors" (i.e. the "illegal" object) will short circuit the apply loop
         RadioSilence,
-        /// objects with a deletion timestamp will run the cleanup loop sending event and removing the finalizer
-        Cleanup(Echo),
     }
 
     pub async fn timeout_after_1s(handle: tokio::task::JoinHandle<()>) {
@@ -111,35 +83,9 @@ mod test {
                 match scenario {
                     Scenario::EchoPatch(echo) => self.handle_echo_patch(echo.clone()).await,
                     Scenario::RadioSilence => Ok(self),
-                    Scenario::Cleanup(echo) => self.handle_finalizer_removal(echo).await,
                 }
                 .expect("scenario completed without errors");
             })
-        }
-
-        async fn handle_finalizer_removal(mut self, echo: Echo) -> Result<Self> {
-            let (request, send) = self.0.next_request().await.expect("service not called");
-            // We expect a json patch to the specified echo removing our finalizer (at index 0)
-            assert_eq!(request.method(), http::Method::PATCH);
-            assert_eq!(
-                request.uri().to_string(),
-                format!(
-                    "/apis/example.com/v1/namespaces/default/echoes/{}?",
-                    echo.name_any()
-                )
-            );
-            let expected_patch = serde_json::json!([
-                { "op": "test", "path": "/metadata/finalizers/0", "value": ECHO_FINALIZER },
-                { "op": "remove", "path": "/metadata/finalizers/0", "path": "/metadata/finalizers/0" }
-            ]);
-            let req_body = request.into_body().collect_bytes().await.unwrap();
-            let runtime_patch: serde_json::Value =
-                serde_json::from_slice(&req_body).expect("valid echo from runtime");
-            assert_json_include!(actual: runtime_patch, expected: expected_patch);
-
-            let response = serde_json::to_vec(&echo).unwrap(); // respond as the apiserver would have
-            send.send_response(Response::builder().body(Body::from(response)).unwrap());
-            Ok(self)
         }
 
         async fn handle_echo_patch(mut self, echo: Echo) -> Result<Self> {
