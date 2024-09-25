@@ -6,9 +6,10 @@ use crate::telemetry;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+use chrono::Utc;
 use k8s_openapi::api::apps::v1::{Deployment, DeploymentSpec};
 use k8s_openapi::api::core::v1::{Container, ContainerPort, PodSpec, PodTemplateSpec};
-use k8s_openapi::apimachinery::pkg::apis::meta::v1::LabelSelector;
+use k8s_openapi::apimachinery::pkg::apis::meta::v1::{Condition, LabelSelector, Time};
 use kube::api::{Api, ObjectMeta, Patch, PatchParams, Resource};
 use kube::client::Client;
 use kube::runtime::controller::Action;
@@ -19,6 +20,8 @@ use tokio::time::Duration;
 use tracing::{debug, field, info, instrument, Span};
 
 pub static ECHO_FINALIZER: &str = "echoes.example.com";
+pub static STATUS_READY: &str = "Ready";
+pub static STATUS_PROGRESSING: &str = "Progressing";
 
 async fn patch(client: Client, echo: &Echo) -> Result<Deployment, Error> {
     let deployment_api = Api::<Deployment>::namespaced(client, &echo.get_namespace());
@@ -112,12 +115,48 @@ pub async fn reconcile_echo_status(echo: &Echo, ctx: Arc<Context<Deployment>>) -
         Some(status) => Ok(status),
         None => Err(Error::MissingObjectKey("status")),
     }?;
+
+    let type_ = if deployment_status.ready_replicas == deployment_status.updated_replicas {
+        STATUS_READY
+    } else {
+        STATUS_PROGRESSING
+    };
+    // if there are new conditions, add them to the list
+    let new_condition = Condition {
+        type_: type_.to_owned(),
+        status: "True".to_owned(),
+        reason: "".to_owned(),
+        message: "".to_owned(),
+        last_transition_time: Time(Utc::now()),
+        observed_generation: deployment.metadata.generation,
+    };
+
+    let conditions = match echo.status.as_ref().and_then(|s| s.conditions.as_ref()) {
+        // remove Ready condition if we are Progressing
+        Some(previous_conditions) if type_ == STATUS_PROGRESSING => previous_conditions
+            .iter()
+            .filter(|x| x.type_ != STATUS_READY)
+            .chain(std::iter::once(&new_condition))
+            .cloned()
+            .collect(),
+        // add new condition if it doesn't exist
+        Some(previous_conditions) if !previous_conditions.iter().any(|x| x.type_ == type_) => {
+            previous_conditions
+                .iter()
+                .chain(std::iter::once(&new_condition))
+                .cloned()
+                .collect()
+        }
+        Some(previous_conditions) => previous_conditions.clone(),
+        None => vec![new_condition],
+    };
     let new_status = EchoStatus {
         available_replicas: deployment_status.available_replicas,
         observed_generation: deployment.metadata.generation,
         ready_replicas: deployment_status.ready_replicas,
         replicas: deployment_status.replicas,
         updated_replicas: deployment_status.updated_replicas,
+        conditions: Some(conditions),
     };
     let new_status_patch = Patch::Apply(json!({
         "apiVersion": "example.com/v1",
