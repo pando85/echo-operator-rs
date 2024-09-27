@@ -24,6 +24,7 @@ static STATUS_PROGRESSING: &str = "Progressing";
 
 #[instrument(skip(ctx, echo), fields(trace_id))]
 pub async fn reconcile_echo(echo: Arc<Echo>, ctx: Arc<Context<Deployment>>) -> Result<Action> {
+    // is trace_id necessary in logs?
     let trace_id = telemetry::get_trace_id();
     Span::current().record("trace_id", field::display(&trace_id));
     let _timer = ctx.metrics.reconcile.count_and_measure(&trace_id);
@@ -47,18 +48,20 @@ impl Echo {
         let deployment_api = Api::<Deployment>::namespaced(client, &self.get_namespace());
         let owner_references = self.controller_owner_ref(&()).map(|oref| vec![oref]);
 
-        let mut labels: BTreeMap<String, String> = BTreeMap::new();
-        labels.extend(
-            self.labels()
-                .iter()
-                .map(|(k, v)| (k.to_owned(), v.to_owned())),
-        );
-        labels.insert("app".to_owned(), self.name_any());
-        labels.insert("app.kubernetes.io/name".to_owned(), "echo".to_owned());
-        labels.insert(
-            "app.kubernetes.io/managed-by".to_owned(),
-            "kaniop".to_owned(),
-        );
+        let labels: BTreeMap<String, String> = self
+            .labels()
+            .iter()
+            .map(|(k, v)| (k.to_owned(), v.to_owned()))
+            .chain([
+                ("app".to_owned(), self.name_any()),
+                ("app.kubernetes.io/name".to_owned(), "echo".to_owned()),
+                (
+                    "app.kubernetes.io/managed-by".to_owned(),
+                    "kaniop".to_owned(),
+                ),
+            ])
+            .collect();
+
         let deployment = Deployment {
             metadata: ObjectMeta {
                 name: Some(self.name_any()),
@@ -111,24 +114,21 @@ impl Echo {
         let deployment_ref =
             ObjectRef::<Deployment>::new_with(&self.name_any(), ()).within(namespace);
         debug!("getting deployment: {}/{}", namespace, &self.name_any());
-        let deployment = match ctx.store.get(&deployment_ref) {
-            Some(deployment) => Ok(deployment),
-            None => Err(Error::MissingObject("deployment")),
-        }?;
-        let owner = match deployment
+        let deployment = ctx
+            .store
+            .get(&deployment_ref)
+            .ok_or_else(|| Error::MissingObject("deployment"))?;
+        let owner = deployment
             .metadata
             .owner_references
             .as_ref()
             .and_then(|refs| refs.iter().find(|r| r.controller == Some(true)))
-        {
-            Some(owner) => Ok(owner),
-            None => Err(Error::MissingObjectKey("ownerReferences")),
-        }?;
+            .ok_or_else(|| Error::MissingObjectKey("ownerReferences"))?;
 
-        let deployment_status = match deployment.status.as_ref() {
-            Some(status) => Ok(status),
-            None => Err(Error::MissingObjectKey("status")),
-        }?;
+        let deployment_status = deployment
+            .status
+            .as_ref()
+            .ok_or_else(|| Error::MissingObjectKey("status"))?;
 
         let new_status = self.generate_status(deployment_status, deployment.metadata.generation);
 
