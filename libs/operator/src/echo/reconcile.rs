@@ -17,7 +17,7 @@ use kube::runtime::reflector::ObjectRef;
 use kube::ResourceExt;
 use serde_json::json;
 use tokio::time::Duration;
-use tracing::{debug, field, info, instrument, Span};
+use tracing::{debug, field, info, instrument, trace, Span};
 
 static STATUS_READY: &str = "Ready";
 static STATUS_PROGRESSING: &str = "Progressing";
@@ -31,9 +31,12 @@ pub async fn reconcile_echo(echo: Arc<Echo>, ctx: Arc<Context<Deployment>>) -> R
 
     let name = echo.name_any();
     let namespace = echo.get_namespace();
-    info!("reconciling Echo: {namespace}/{name}");
+    info!(msg = "reconciling Echo", namespace, name);
 
-    let _ignored_errors = echo.reconcile_status(ctx.clone()).await;
+    let _ignore_errors = echo
+        .reconcile_status(ctx.clone())
+        .await
+        .map_err(|e| debug!(msg = "failed to reconcile status", namespace, name, %e));
     echo.patch(ctx.client.clone()).await?;
     Ok(Action::requeue(Duration::from_secs(5 * 60)))
 }
@@ -45,7 +48,7 @@ impl Echo {
     }
 
     async fn patch(&self, client: Client) -> Result<Deployment, Error> {
-        let deployment_api = Api::<Deployment>::namespaced(client, &self.get_namespace());
+        let deployment_api = Api::<Deployment>::namespaced(client.clone(), &self.get_namespace());
         let owner_references = self.controller_owner_ref(&()).map(|oref| vec![oref]);
 
         let labels: BTreeMap<String, String> = self
@@ -99,21 +102,53 @@ impl Echo {
             ..Deployment::default()
         };
 
-        deployment_api
+        let result = deployment_api
             .patch(
                 &self.name_any(),
                 &PatchParams::apply("echoes.example.com").force(),
                 &Patch::Apply(&deployment),
             )
+            .await;
+        match result {
+            Ok(deployment) => Ok(deployment),
+            Err(e) => {
+                match e {
+                    kube::Error::Api(ae) if ae.code == 422 => {
+                        info!(msg = "recreating Deployment because the update operation wasn't possible", namespace = self.get_namespace(), name=self.name_any(), reason=ae.reason);
+                        self.delete_deployment(client.clone()).await?;
+                        deployment_api
+                            .patch(
+                                &self.name_any(),
+                                &PatchParams::apply("echoes.example.com").force(),
+                                &Patch::Apply(&deployment),
+                            )
+                            .await
+                            .map_err(Error::KubeError)
+                    }
+                    _ => Err(Error::KubeError(e)),
+                }
+            }
+        }
+    }
+
+    async fn delete_deployment(&self, client: Client) -> Result<(), Error> {
+        let deployment_api = Api::<Deployment>::namespaced(client, &self.get_namespace());
+        deployment_api
+            .delete(&self.name_any(), &Default::default())
             .await
-            .map_err(Error::KubeError)
+            .map_err(Error::KubeError)?;
+        Ok(())
     }
 
     async fn reconcile_status(&self, ctx: Arc<Context<Deployment>>) -> Result<()> {
         let namespace = &self.get_namespace();
         let deployment_ref =
             ObjectRef::<Deployment>::new_with(&self.name_any(), ()).within(namespace);
-        debug!("getting deployment: {}/{}", namespace, &self.name_any());
+        debug!(
+            msg = "getting deployment",
+            namespace,
+            name = &self.name_any()
+        );
         let deployment = ctx
             .store
             .get(&deployment_ref)
@@ -137,7 +172,12 @@ impl Echo {
             "kind": "Echo",
             "status": new_status
         }));
-        debug!("updating Echo status for: {}/{}", namespace, owner.name);
+        debug!(msg = "updating Echo status", namespace, name = owner.name);
+        trace!(
+            msg = format!("new status {:?}", new_status_patch),
+            namespace,
+            name = owner.name
+        );
         let patch = PatchParams::apply("echoes.example.com").force();
         let echo_api = Api::<Echo>::namespaced(ctx.client.clone(), namespace);
         let _o = echo_api

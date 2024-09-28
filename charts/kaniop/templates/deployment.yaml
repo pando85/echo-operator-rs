@@ -43,7 +43,7 @@ spec:
               containerPort: {{ .Values.containerPorts.metrics }}
               protocol: TCP
           env:
-            - name: RUST_LOG
+            - name: LOG_FILTER
               value: {{ .Values.logging.level }}
             {{- if .Values.tracing.enabled }}
             - name: OPENTELEMETRY_ENDPOINT_URL

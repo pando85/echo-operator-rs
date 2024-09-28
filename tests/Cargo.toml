@@ -16,3 +16,4 @@ kaniop-operator = { path = "../libs/operator" }
 tokio = { workspace = true }
 kube = { workspace = true }
 k8s-openapi = { workspace = true }
+serde_json = { workspace = true }

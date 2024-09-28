@@ -135,11 +135,17 @@ e2e:	## prepare e2e tests environment
 	fi; \
 	kind create cluster --name $(KIND_CLUSTER_NAME) --config .github/kind-cluster-$(KUBERNETES_VERSION).yaml; \
 	kind load --name $(KIND_CLUSTER_NAME) docker-image $(DOCKER_IMAGE); \
+	if [ "$$(kubectl config current-context)" != "kind-$(KIND_CLUSTER_NAME)" ]; then \
+		echo "ERROR: change to kind context: kubectl config use-context kind-$(KIND_CLUSTER_NAME)"; \
+		exit 1; \
+	fi; \
+	kubectl create namespace kaniop; \
 	helm install kaniop ./charts/kaniop \
+		--namespace kaniop \
 		--set image.tag=$(VERSION) \
-		--set logging.level=debug
+		--set logging.level='info\,kaniop=trace'
 	for i in {1..20}; do \
-		if kubectl get deploy kaniop | grep -E 'kaniop.*1/1'; then \
+		if kubectl -n kaniop get deploy kaniop | grep -E 'kaniop.*1/1'; then \
 			echo "Kanio deployment is ready"; \
 			break; \
 		else \
@@ -151,7 +157,20 @@ e2e:	## prepare e2e tests environment
 .PHONY: e2e-tests
 e2e-tests: e2e
 e2e-tests:	## run e2e tests
+	@if [ "$$(kubectl config current-context)" != "kind-$(KIND_CLUSTER_NAME)" ]; then \
+		echo "ERROR: change to kind context: kubectl config use-context kind-$(KIND_CLUSTER_NAME)"; \
+		exit 1; \
+	fi
 	cargo test -p tests --features e2e-tests
+
+.PHONY: clean-e2e
+clean-e2e:	## clean e2e environment
+	@if [ "$$(kubectl config current-context)" != "kind-$(KIND_CLUSTER_NAME)" ]; then \
+		echo "change to kind context if delete is really needed: kubectl config use-context kind-$(KIND_CLUSTER_NAME)"; \
+		exit 0; \
+	fi; \
+	kubectl -n default delete echo --all; \
+	kubectl -n default delete deployment --all
 
 .PHONY: delete-kind
 delete-kind:

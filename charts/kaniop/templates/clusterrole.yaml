@@ -10,6 +10,7 @@ rules:
       - example.com
     resources:
       - echoes
+      - echoes/status
       - echoes/finalizers
     verbs:
       - get
@@ -26,4 +27,6 @@ rules:
       - update
       - delete
       - create
+      - list
+      - watch
 {{- end }}

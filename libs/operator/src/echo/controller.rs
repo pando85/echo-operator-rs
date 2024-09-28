@@ -23,7 +23,8 @@ fn error_policy<K: ResourceExt>(
     error: &Error,
     ctx: Arc<Context<Deployment>>,
 ) -> Action {
-    error!(%error, name = %obj.name_any(), "failed reconciliation");
+    // safe unwrap: deployment is a namespace scoped resource
+    error!(msg = "failed reconciliation", namespace = %obj.namespace().unwrap(), name = %obj.name_any(), %error);
     ctx.metrics.reconcile.set_failure(&obj, error);
     Action::requeue(Duration::from_secs(5 * 60))
 }
@@ -64,29 +65,35 @@ pub async fn run(state: State) {
                     match event {
                         watcher::Event::Delete(d) => {
                             debug!(
-                                "deleted deployment: {}/{}",
+                                msg = "deleted deployment",
                                 // safe unwrap: deployment is a namespace scoped resource
-                                d.namespace().unwrap(),
-                                d.name_any()
+                                namespace = d.namespace().unwrap(),
+                                name = d.name_any()
                             );
                             // trigger reconcile on delete for echo from owner reference
                             reload_tx_clone.try_send(()).unwrap();
                         }
-                        _ => {
-                            debug!("added/Updated deployment");
+                        watcher::Event::Apply(d) => {
+                            debug!(
+                                msg = "added or modified deployment",
+                                // safe unwrap: deployment is a namespace scoped resource
+                                namespace = d.namespace().unwrap(),
+                                name = d.name_any()
+                            );
                         }
+                        _ => {}
                     }
                 }
-                Err(error) => error!(%error, "unexpected error when watching resource"),
+                Err(e) => error!(msg = "unexpected error when watching resource", %e),
             }
         }
     });
 
-    info!("starting echo controller");
+    info!(msg = "starting echo controller");
     // TODO: watcher::Config::default().streaming_lists() when stabilized in K8s
     let echo_controller = Controller::new(echo, watcher::Config::default().any_semantic())
         // debounce to filter out reconcile calls that happen quick succession (only taking the latest)
-        .with_config(controller::Config::default().debounce(Duration::from_secs(2)))
+        .with_config(controller::Config::default().debounce(Duration::from_millis(500)))
         .owns_shared_stream(subscriber)
         .reconcile_all_on(reload_rx.map(|_| ()))
         .shutdown_on_signal()

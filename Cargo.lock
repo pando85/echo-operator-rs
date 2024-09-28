@@ -2585,6 +2585,7 @@ dependencies = [
  "k8s-openapi",
  "kaniop-operator",
  "kube",
+ "serde_json",
  "tokio",
 ]
 
