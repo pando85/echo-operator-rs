@@ -17,7 +17,7 @@ mod test {
     use kube::{client::Body, Client, Resource, ResourceExt};
 
     impl Echo {
-        /// A non updated normal test echo
+        /// A normal test echo with a given status
         pub fn test(status: Option<EchoStatus>) -> Self {
             let mut e = Echo::new("test", EchoSpec { replicas: 1 });
             e.meta_mut().namespace = Some("default".into());
@@ -25,7 +25,7 @@ mod test {
             e
         }
 
-        /// Modify echo to be set to hide
+        /// Modify echo replicas
         pub fn change_replicas(mut self, replicas: i32) -> Self {
             self.spec.replicas = replicas;
             self

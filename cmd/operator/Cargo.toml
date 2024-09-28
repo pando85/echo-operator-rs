@@ -13,9 +13,9 @@ name = "kaniop"
 path = "src/main.rs"
 
 [dependencies]
-kaniop_operator = { path = "../../libs/operator", version = "0.0.0" }
-clap = { workspace = true, features = ["std", "derive", "cargo", "env"] }
-tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+kaniop-operator = { path = "../../libs/operator", version = "0.0.0" }
+clap = { workspace = true, features = ["cargo", "env"] }
+futures = { workspace = true }
+tokio = { workspace = true }
 actix-web = "4.9.0"
-futures = "0.3"
 anyhow = "1.0"

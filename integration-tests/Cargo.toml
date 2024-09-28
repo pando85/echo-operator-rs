@@ -1,0 +1,14 @@
+[package]
+name = "integration-tests"
+version = "0.0.0"
+edition = "2021"
+
+[features]
+default = []
+integration-tests = []
+
+[dependencies]
+kaniop-operator = { path = "../libs/operator" }
+tokio = { workspace = true }
+kube = { workspace = true }
+k8s-openapi = { workspace = true }

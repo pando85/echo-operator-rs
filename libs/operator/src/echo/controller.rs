@@ -49,7 +49,6 @@ pub async fn run(state: State) {
 
     let deployment = Api::<Deployment>::all(client.clone());
 
-    // TODO: filter by echo owner reference or label
     let deployment_watch = watcher(
         deployment.clone(),
         watcher::Config::default().labels("app.kubernetes.io/managed-by=kaniop"),

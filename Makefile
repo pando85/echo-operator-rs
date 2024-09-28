@@ -92,7 +92,7 @@ update-changelog:	## automatically update changelog based on commits
 .PHONY: publish
 publish: crd-code
 publish:	## publish crates
-	@for package in $(shell find . -mindepth 2 -not -path './vendor/*' -name Cargo.toml -exec dirname {} \; | sort -r);do \
+	@for package in $(shell find . -mindepth 2 -not -path './integration-tests/*' -name Cargo.toml -exec dirname {} \; | sort -r );do \
 		cd $$package; \
 		cargo publish; \
 		cd -; \
@@ -143,6 +143,7 @@ e2e:	## run e2e tests
 			sleep 5; \
 		fi \
 	done
+	cargo test -p integration-tests --features integration-tests
 
 .PHONY: delete-kind
 delete-kind:
