@@ -1,11 +1,15 @@
 [package]
-name = "integration-tests"
+name = "tests"
 version = "0.0.0"
 edition = "2021"
 
+[lib]
+name = "e2e"
+path = "e2e/lib.rs"
+
 [features]
 default = []
-integration-tests = []
+e2e-tests = []
 
 [dependencies]
 kaniop-operator = { path = "../libs/operator" }

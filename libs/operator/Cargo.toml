@@ -12,6 +12,10 @@ repository.workspace = true
 name = "kaniop_operator"
 path = "src/lib.rs"
 
+[features]
+default = []
+integration-tests = []
+
 [dependencies]
 clap = { workspace = true }
 futures = { workspace = true }

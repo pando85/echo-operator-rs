@@ -150,13 +150,12 @@ pub async fn init(
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "integration-tests"))]
 mod test {
     // This test only works when telemetry is initialized fully
     // and requires OPENTELEMETRY_ENDPOINT_URL pointing to a valid server
     #[tokio::test]
-    #[ignore = "requires a trace exporter"]
-    async fn get_trace_id_returns_valid_traces() {
+    async fn integration_get_trace_id_returns_valid_traces() {
         use super::*;
         let opentelemetry_endpoint_url = std::env::var("OPENTELEMETRY_ENDPOINT_URL").ok();
         super::init(

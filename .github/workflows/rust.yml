@@ -90,7 +90,7 @@ jobs:
           args: --locked --target=${{ matrix.job.target }}
 
       - name: Run integration tests
-        run: make test-integration
+        run: make integration-tests
 
       - name: Extract crate information
         shell: bash

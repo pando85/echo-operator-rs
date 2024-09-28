@@ -92,7 +92,7 @@ update-changelog:	## automatically update changelog based on commits
 .PHONY: publish
 publish: crd-code
 publish:	## publish crates
-	@for package in $(shell find . -mindepth 2 -not -path './integration-tests/*' -name Cargo.toml -exec dirname {} \; | sort -r );do \
+	@for package in $(shell find . -mindepth 2 -not -path './e2e-tests/*' -name Cargo.toml -exec dirname {} \; | sort -r );do \
 		cd $$package; \
 		cargo publish; \
 		cd -; \
@@ -115,22 +115,26 @@ push-image-arm64: CARGO_TARGET=aarch64-unknown-linux-gnu
 push-images: crd-code $(IMAGE_ARCHITECTURES:%=push-image-%)
 push-images:	## push images for all architectures
 
-.PHONY: test-integration
-test-integration:	## run integration tests
+.PHONY: integration-tests
+integration-tests:	## run integration tests
 	@docker run -d --name tempo \
-		-v $(shell pwd)/test/integration/tempo/tempo.yaml:/etc/tempo.yaml \
+		-v $(shell pwd)/tests/integration/config/tempo.yaml:/etc/tempo.yaml \
 		-p 4317:4317 \
 		grafana/tempo:latest -config.file=/etc/tempo.yaml
-	OPENTELEMETRY_ENDPOINT_URL=localhost:4317 cargo test -- --ignored; \
+	OPENTELEMETRY_ENDPOINT_URL=localhost:4317 cargo test --features integration-tests integration; \
 		STATUS=$$?; \
 		docker rm -f tempo >/dev/null 2>&1; \
 		exit $$STATUS
 
 .PHONY: e2e
 e2e: image
-e2e:	## run e2e tests
-	kind create cluster --name $(KIND_CLUSTER_NAME) --config .github/kind-cluster-$(KUBERNETES_VERSION).yaml
-	kind load --name $(KIND_CLUSTER_NAME) docker-image $(DOCKER_IMAGE)
+e2e:	## prepare e2e tests environment
+	@if $$(kind get clusters | grep $(KIND_CLUSTER_NAME) >/dev/null 2>&1); then \
+		echo "e2e environment already running"; \
+		exit 0; \
+	fi; \
+	kind create cluster --name $(KIND_CLUSTER_NAME) --config .github/kind-cluster-$(KUBERNETES_VERSION).yaml; \
+	kind load --name $(KIND_CLUSTER_NAME) docker-image $(DOCKER_IMAGE); \
 	helm install kaniop ./charts/kaniop \
 		--set image.tag=$(VERSION) \
 		--set logging.level=debug
@@ -143,7 +147,11 @@ e2e:	## run e2e tests
 			sleep 5; \
 		fi \
 	done
-	cargo test -p integration-tests --features integration-tests
+
+.PHONY: e2e-tests
+e2e-tests: e2e
+e2e-tests:	## run e2e tests
+	cargo test -p tests --features e2e-tests
 
 .PHONY: delete-kind
 delete-kind:

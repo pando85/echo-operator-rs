@@ -1,5 +1,5 @@
 [workspace]
-members = ["cmd/operator", "libs/operator", "integration-tests"]
+members = ["cmd/operator", "libs/operator", "tests"]
 resolver = "2"
 
 [workspace.package]

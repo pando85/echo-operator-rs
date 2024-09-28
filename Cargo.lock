@@ -1392,16 +1392,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "integration-tests"
-version = "0.0.0"
-dependencies = [
- "k8s-openapi",
- "kaniop-operator",
- "kube",
- "tokio",
-]
-
-[[package]]
 name = "is_terminal_polyfill"
 version = "1.70.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2587,6 +2577,16 @@ name = "sync_wrapper"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a7065abeca94b6a8a577f9bd45aa0867a2238b74e8eb67cf10d492bc39351394"
+
+[[package]]
+name = "tests"
+version = "0.0.0"
+dependencies = [
+ "k8s-openapi",
+ "kaniop-operator",
+ "kube",
+ "tokio",
+]
 
 [[package]]
 name = "thiserror"
