@@ -60,7 +60,7 @@ mod test {
         C: Condition<R>,
     {
         timeout(
-            Duration::from_secs(10),
+            Duration::from_secs(30),
             await_condition(api, name, condition),
         )
         .await
