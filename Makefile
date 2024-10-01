@@ -2,6 +2,8 @@ GH_ORG ?= pando85
 VERSION ?= $(shell git rev-parse --short HEAD)
 KUBERNETES_VERSION = 1.30
 KIND_CLUSTER_NAME = chart-testing
+KUBE_CONTEXT := kind-$(KIND_CLUSTER_NAME)
+KANIOP_NAMESPACE := kaniop
 KOPIUM_PATH ?= kopium
 export CARGO_TARGET_DIR ?= target-$(CARGO_TARGET)
 CARGO_TARGET ?= x86_64-unknown-linux-gnu
@@ -13,7 +15,7 @@ DOCKER_BUILD_PARAMS = --build-arg "CARGO_TARGET_DIR=$(CARGO_TARGET_DIR)" \
 IMAGE_ARCHITECTURES := amd64 arm64
 # build images in parallel
 MAKEFLAGS += -j2
-TARGET_CRD_DIR := libs/operator/src/crd
+CRD_TARGET_DIR := libs/operator/src/crd
 CRD_DIR := charts/kaniop/crds
 CRD_FILES := $(wildcard $(CRD_DIR)/*.yaml)
 
@@ -35,15 +37,15 @@ kopium:
 		echo "$(KOPIUM_PATH) is already installed."; \
 	fi
 
-.PHONY: $(TARGET_CRD_DIR)/%.rs
-$(TARGET_CRD_DIR)/%.rs: $(CRD_DIR)/crd-%.yaml
+.PHONY: $(CRD_TARGET_DIR)/%.rs
+$(CRD_TARGET_DIR)/%.rs: $(CRD_DIR)/crd-%.yaml
 	@echo "Generating $@ from $<"
 	@kopium --derive Default -f $< > $@
 
 .NOTPARALLEL: crd-code
 .PHONY: crd-code
 crd-code: ## Generate code from CRD definitions
-crd-code: kopium $(CRD_FILES:$(CRD_DIR)/crd-%.yaml=$(TARGET_CRD_DIR)/%.rs)
+crd-code: kopium $(CRD_FILES:$(CRD_DIR)/crd-%.yaml=$(CRD_TARGET_DIR)/%.rs)
 	@echo "CRDs code generation complete."
 
 .PHONY: lint
@@ -129,44 +131,44 @@ integration-tests:	## run integration tests
 .PHONY: e2e
 e2e: image
 e2e:	## prepare e2e tests environment
-	@if $$(kind get clusters | grep $(KIND_CLUSTER_NAME) >/dev/null 2>&1); then \
+	@if kind get clusters | grep -q $(KIND_CLUSTER_NAME); then \
 		echo "e2e environment already running"; \
 		exit 0; \
 	fi; \
 	kind create cluster --name $(KIND_CLUSTER_NAME) --config .github/kind-cluster-$(KUBERNETES_VERSION).yaml; \
 	kind load --name $(KIND_CLUSTER_NAME) docker-image $(DOCKER_IMAGE); \
-	if [ "$$(kubectl config current-context)" != "kind-$(KIND_CLUSTER_NAME)" ]; then \
-		echo "ERROR: change to kind context: kubectl config use-context kind-$(KIND_CLUSTER_NAME)"; \
+	if [ "$$(kubectl config current-context)" != "$(KUBE_CONTEXT)" ]; then \
+		echo "ERROR: switch to kind context: kubectl config use-context $(KUBE_CONTEXT)"; \
 		exit 1; \
 	fi; \
-	kubectl create namespace kaniop; \
+	kubectl create namespace $(KANIOP_NAMESPACE); \
 	helm install kaniop ./charts/kaniop \
-		--namespace kaniop \
+		--namespace $(KANIOP_NAMESPACE) \
 		--set image.tag=$(VERSION) \
 		--set logging.level='info\,kaniop=trace'
 	for i in {1..20}; do \
-		if kubectl -n kaniop get deploy kaniop | grep -E 'kaniop.*1/1'; then \
-			echo "Kanio deployment is ready"; \
+		if kubectl -n $(KANIOP_NAMESPACE) get deploy $(KANIOP_NAMESPACE) | grep -q '1/1'; then \
+			echo "Kaniop deployment is ready"; \
 			break; \
 		else \
 			echo "Retrying in 5 seconds..."; \
 			sleep 5; \
-		fi \
+		fi; \
 	done
 
 .PHONY: e2e-tests
 e2e-tests: e2e
 e2e-tests:	## run e2e tests
-	@if [ "$$(kubectl config current-context)" != "kind-$(KIND_CLUSTER_NAME)" ]; then \
-		echo "ERROR: change to kind context: kubectl config use-context kind-$(KIND_CLUSTER_NAME)"; \
+	@if [ "$$(kubectl config current-context)" != "$(KUBE_CONTEXT)" ]; then \
+		echo "ERROR: switch to kind context: kubectl config use-context $(KUBE_CONTEXT)"; \
 		exit 1; \
 	fi
 	cargo test -p tests --features e2e-tests
 
 .PHONY: clean-e2e
 clean-e2e:	## clean e2e environment
-	@if [ "$$(kubectl config current-context)" != "kind-$(KIND_CLUSTER_NAME)" ]; then \
-		echo "change to kind context if delete is really needed: kubectl config use-context kind-$(KIND_CLUSTER_NAME)"; \
+	@if [ "$$(kubectl config current-context)" != "$(KUBE_CONTEXT)" ]; then \
+		echo "switch to the kind context only if deletion is necessary: kubectl config use-context $(KUBE_CONTEXT)"; \
 		exit 0; \
 	fi; \
 	kubectl -n default delete echo --all; \
