@@ -1,7 +1,6 @@
 use crate::controller::Context;
 use crate::crd::echo::{Echo, EchoStatus};
 use crate::error::{Error, Result};
-use crate::telemetry;
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -17,26 +16,19 @@ use kube::runtime::reflector::ObjectRef;
 use kube::ResourceExt;
 use serde_json::json;
 use tokio::time::Duration;
-use tracing::{debug, field, info, instrument, trace, Span};
+use tracing::{debug, info, instrument, trace};
 
 static STATUS_READY: &str = "Ready";
 static STATUS_PROGRESSING: &str = "Progressing";
 
-#[instrument(skip(ctx, echo), fields(trace_id))]
+#[instrument(skip(ctx, echo))]
 pub async fn reconcile_echo(echo: Arc<Echo>, ctx: Arc<Context<Deployment>>) -> Result<Action> {
-    // is trace_id necessary in logs?
-    let trace_id = telemetry::get_trace_id();
-    Span::current().record("trace_id", field::display(&trace_id));
-    let _timer = ctx.metrics.reconcile.count_and_measure(&trace_id);
-
-    let name = echo.name_any();
-    let namespace = echo.get_namespace();
-    info!(msg = "reconciling Echo", namespace, name);
+    info!(msg = "reconciling Echo");
 
     let _ignore_errors = echo
         .reconcile_status(ctx.clone())
         .await
-        .map_err(|e| debug!(msg = "failed to reconcile status", namespace, name, %e));
+        .map_err(|e| debug!(msg = "failed to reconcile status", %e));
     echo.patch(ctx.client.clone()).await?;
     Ok(Action::requeue(Duration::from_secs(5 * 60)))
 }
@@ -114,7 +106,7 @@ impl Echo {
             Err(e) => {
                 match e {
                     kube::Error::Api(ae) if ae.code == 422 => {
-                        info!(msg = "recreating Deployment because the update operation wasn't possible", namespace = self.get_namespace(), name=self.name_any(), reason=ae.reason);
+                        info!(msg = "recreating Deployment because the update operation wasn't possible", reason=ae.reason);
                         self.delete_deployment(client.clone()).await?;
                         deployment_api
                             .patch(
@@ -144,11 +136,7 @@ impl Echo {
         let namespace = &self.get_namespace();
         let deployment_ref =
             ObjectRef::<Deployment>::new_with(&self.name_any(), ()).within(namespace);
-        debug!(
-            msg = "getting deployment",
-            namespace,
-            name = &self.name_any()
-        );
+        debug!(msg = "getting deployment");
         let deployment = ctx
             .store
             .get(&deployment_ref)
@@ -172,12 +160,8 @@ impl Echo {
             "kind": "Echo",
             "status": new_status
         }));
-        debug!(msg = "updating Echo status", namespace, name = owner.name);
-        trace!(
-            msg = format!("new status {:?}", new_status_patch),
-            namespace,
-            name = owner.name
-        );
+        debug!(msg = "updating Echo status");
+        trace!(msg = format!("new status {:?}", new_status_patch));
         let patch = PatchParams::apply("echoes.example.com").force();
         let echo_api = Api::<Echo>::namespaced(ctx.client.clone(), namespace);
         let _o = echo_api

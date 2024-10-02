@@ -2,11 +2,11 @@ use crate::error::Error;
 
 use kube::ResourceExt;
 use opentelemetry::trace::TraceId;
-use prometheus_client::{
-    encoding::EncodeLabelSet,
-    metrics::{counter::Counter, exemplar::HistogramWithExemplars, family::Family},
-    registry::{Registry, Unit},
+use prometheus_client::encoding::EncodeLabelSet;
+use prometheus_client::metrics::{
+    counter::Counter, exemplar::HistogramWithExemplars, family::Family,
 };
+use prometheus_client::registry::{Registry, Unit};
 use std::sync::Arc;
 use tokio::time::Instant;
 
@@ -28,18 +28,18 @@ impl Default for Metrics {
 }
 
 #[derive(Clone, Hash, PartialEq, Eq, EncodeLabelSet, Debug, Default)]
-pub struct TraceLabel {
-    pub trace_id: String,
+pub struct ControllerLabel {
+    pub name: String,
 }
-impl TryFrom<&TraceId> for TraceLabel {
+impl TryFrom<&TraceId> for ControllerLabel {
     type Error = Error;
 
-    fn try_from(id: &TraceId) -> Result<TraceLabel, Self::Error> {
+    fn try_from(id: &TraceId) -> Result<ControllerLabel, Self::Error> {
         if std::matches!(id, &TraceId::INVALID) {
             Err(Error::InvalidTraceId)
         } else {
             let trace_id = id.to_string();
-            Ok(Self { trace_id })
+            Ok(Self { name: trace_id })
         }
     }
 }
@@ -48,7 +48,7 @@ impl TryFrom<&TraceId> for TraceLabel {
 pub struct ReconcileMetrics {
     pub runs: Family<(), Counter>,
     pub failures: Family<ErrorLabels, Counter>,
-    pub duration: HistogramWithExemplars<TraceLabel>,
+    pub duration: HistogramWithExemplars<ControllerLabel>,
 }
 
 impl Default for ReconcileMetrics {
@@ -56,9 +56,7 @@ impl Default for ReconcileMetrics {
         Self {
             runs: Family::<(), Counter>::default(),
             failures: Family::<ErrorLabels, Counter>::default(),
-            duration: HistogramWithExemplars::new(
-                [0.01, 0.1, 0.25, 0.5, 1., 5., 15., 60.].into_iter(),
-            ),
+            duration: HistogramWithExemplars::new([0.1, 0.5, 1., 5., 10.].into_iter()),
         }
     }
 }
@@ -107,8 +105,8 @@ impl ReconcileMetrics {
 /// Relies on Drop to calculate duration and register the observation in the histogram
 pub struct ReconcileMeasurer {
     start: Instant,
-    labels: Option<TraceLabel>,
-    metric: HistogramWithExemplars<TraceLabel>,
+    labels: Option<ControllerLabel>,
+    metric: HistogramWithExemplars<ControllerLabel>,
 }
 
 impl Drop for ReconcileMeasurer {

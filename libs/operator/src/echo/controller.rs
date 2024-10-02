@@ -62,26 +62,16 @@ pub async fn run(state: State) {
             match res {
                 Ok(event) => {
                     debug!("watched event");
-                    match event {
-                        watcher::Event::Delete(d) => {
-                            debug!(
-                                msg = "deleted deployment",
-                                // safe unwrap: deployment is a namespace scoped resource
-                                namespace = d.namespace().unwrap(),
-                                name = d.name_any()
-                            );
-                            // trigger reconcile on delete for echo from owner reference
-                            reload_tx_clone.try_send(()).unwrap();
-                        }
-                        watcher::Event::Apply(d) => {
-                            debug!(
-                                msg = "added or modified deployment",
-                                // safe unwrap: deployment is a namespace scoped resource
-                                namespace = d.namespace().unwrap(),
-                                name = d.name_any()
-                            );
-                        }
-                        _ => {}
+                    if let watcher::Event::Delete(d) = event {
+                        debug!(
+                            msg = "deleted deployment",
+                            // safe unwrap: deployment is a namespace scoped resource
+                            namespace = d.namespace().unwrap(),
+                            name = d.name_any()
+                        );
+                        // trigger reconcile on delete for echo from owner reference
+                        // TODO: trigger only onwer reference
+                        reload_tx_clone.try_send(()).unwrap();
                     }
                 }
                 Err(e) => error!(msg = "unexpected error when watching resource", %e),
