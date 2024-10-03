@@ -89,6 +89,9 @@ jobs:
           command: test
           args: --locked --target=${{ matrix.job.target }}
 
+      - name: Run integration tests
+        run: make integration-tests
+
       - name: Create kind cluster with 5 nodes
         uses: helm/kind-action@v1.10.0
         with:
