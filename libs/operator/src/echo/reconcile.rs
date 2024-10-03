@@ -1,6 +1,7 @@
 use crate::controller::Context;
 use crate::crd::echo::{Echo, EchoStatus};
 use crate::error::{Error, Result};
+use crate::telemetry;
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -16,13 +17,16 @@ use kube::runtime::reflector::ObjectRef;
 use kube::ResourceExt;
 use serde_json::json;
 use tokio::time::Duration;
-use tracing::{debug, info, instrument, trace};
+use tracing::{debug, field, info, instrument, trace, Span};
 
 static STATUS_READY: &str = "Ready";
 static STATUS_PROGRESSING: &str = "Progressing";
 
 #[instrument(skip(ctx, echo))]
 pub async fn reconcile_echo(echo: Arc<Echo>, ctx: Arc<Context<Deployment>>) -> Result<Action> {
+    let trace_id = telemetry::get_trace_id();
+    Span::current().record("trace_id", field::display(&trace_id));
+    let _timer = ctx.metrics.reconcile.count_and_measure(&trace_id);
     info!(msg = "reconciling Echo");
 
     let _ignore_errors = echo

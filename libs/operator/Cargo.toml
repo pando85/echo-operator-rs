@@ -34,7 +34,7 @@ opentelemetry = { version = "0.25", features = ["trace"] }
 opentelemetry_sdk = { version = "0.25", features = ["rt-tokio"] }
 opentelemetry-otlp = { version = "0.25", features = ["tokio"] }
 tonic = "0.9"
-prometheus-client = "0.22.2"
+prometheus-client = "0.22.3"
 
 [dev-dependencies]
 assert-json-diff = "2.0.2"

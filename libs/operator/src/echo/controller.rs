@@ -43,13 +43,15 @@ pub async fn run(state: State) {
     let (deployment_store, writer) = reflector::store_shared(SUBSCRIBE_BUFFER_SIZE);
     let subscriber: ReflectHandle<Deployment> = writer
         .subscribe()
-        // safe unwrap: writer is created from a shared store
+        // safe unwrap: writer is created from a shared store. It should be improved in kube-rs API
         .expect("subscribers can only be created from shared stores");
 
     let (reload_tx, reload_rx) = futures::channel::mpsc::channel(RELOAD_BUFFER_SIZE);
 
     let deployment = Api::<Deployment>::all(client.clone());
 
+    // TODO: remove for each trigger on delete logic when
+    // (dispatch delete events issue)[https://github.com/kube-rs/kube/issues/1590] is solved
     let deployment_watch = watcher(
         deployment.clone(),
         watcher::Config::default().labels("app.kubernetes.io/managed-by=kaniop"),

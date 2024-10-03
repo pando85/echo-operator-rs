@@ -145,7 +145,7 @@ e2e:	## prepare e2e tests environment
 	helm install kaniop ./charts/kaniop \
 		--namespace $(KANIOP_NAMESPACE) \
 		--set image.tag=$(VERSION) \
-		--set logging.level='info\,kaniop=trace'
+		--set logging.level='info\,kaniop=trace'; \
 	for i in {1..20}; do \
 		if kubectl -n $(KANIOP_NAMESPACE) get deploy $(KANIOP_NAMESPACE) | grep -q '1/1'; then \
 			echo "Kaniop deployment is ready"; \

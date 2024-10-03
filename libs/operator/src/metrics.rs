@@ -18,7 +18,7 @@ pub struct Metrics {
 
 impl Default for Metrics {
     fn default() -> Self {
-        let mut registry = Registry::with_prefix("echo_ctrl_reconcile");
+        let mut registry = Registry::with_prefix("kaniop_reconcile");
         let reconcile = ReconcileMetrics::default().register(&mut registry);
         Self {
             registry: Arc::new(registry),
@@ -28,18 +28,18 @@ impl Default for Metrics {
 }
 
 #[derive(Clone, Hash, PartialEq, Eq, EncodeLabelSet, Debug, Default)]
-pub struct ControllerLabel {
-    pub name: String,
+pub struct TraceLabel {
+    pub id: String,
 }
-impl TryFrom<&TraceId> for ControllerLabel {
+impl TryFrom<&TraceId> for TraceLabel {
     type Error = Error;
 
-    fn try_from(id: &TraceId) -> Result<ControllerLabel, Self::Error> {
+    fn try_from(id: &TraceId) -> Result<TraceLabel, Self::Error> {
         if std::matches!(id, &TraceId::INVALID) {
             Err(Error::InvalidTraceId)
         } else {
             let trace_id = id.to_string();
-            Ok(Self { name: trace_id })
+            Ok(Self { id: trace_id })
         }
     }
 }
@@ -48,7 +48,7 @@ impl TryFrom<&TraceId> for ControllerLabel {
 pub struct ReconcileMetrics {
     pub runs: Family<(), Counter>,
     pub failures: Family<ErrorLabels, Counter>,
-    pub duration: HistogramWithExemplars<ControllerLabel>,
+    pub duration: HistogramWithExemplars<TraceLabel>,
 }
 
 impl Default for ReconcileMetrics {
@@ -105,14 +105,13 @@ impl ReconcileMetrics {
 /// Relies on Drop to calculate duration and register the observation in the histogram
 pub struct ReconcileMeasurer {
     start: Instant,
-    labels: Option<ControllerLabel>,
-    metric: HistogramWithExemplars<ControllerLabel>,
+    labels: Option<TraceLabel>,
+    metric: HistogramWithExemplars<TraceLabel>,
 }
 
 impl Drop for ReconcileMeasurer {
     fn drop(&mut self) {
-        #[allow(clippy::cast_precision_loss)]
-        let duration = self.start.elapsed().as_millis() as f64 / 1000.0;
+        let duration = self.start.elapsed().as_secs_f64();
         let labels = self.labels.take();
         self.metric.observe(duration, labels);
     }
