@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use opentelemetry::trace::{TraceError, TraceId, TracerProvider};
+use opentelemetry::trace::{TraceError, TracerProvider};
 use opentelemetry::KeyValue;
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::trace::{self, RandomIdGenerator, Sampler};
@@ -21,30 +21,6 @@ pub enum Error {
     /// Error encountered when setting the global tracing subscriber.
     #[error("SetGlobalDefaultError: {0}")]
     SetGlobalDefaultError(#[source] SetGlobalDefaultError),
-}
-
-/// Fetches the current `opentelemetry::trace::TraceId` as a hexadecimal string.
-///
-/// This function retrieves the `TraceId` by traversing the full tracing stack, from
-/// the current [`tracing::Span`] to its corresponding [`opentelemetry::Context`].
-/// It returns the trace ID associated with the current span.
-///
-/// # Example
-///
-/// ```rust
-/// # use kaniop_operator::telemetry::get_trace_id;
-/// let trace_id = get_trace_id();
-/// println!("Current trace ID: {:?}", trace_id);
-/// ```
-pub fn get_trace_id() -> TraceId {
-    use opentelemetry::trace::TraceContextExt as _; // opentelemetry::Context -> opentelemetry::trace::Span
-    use tracing_opentelemetry::OpenTelemetrySpanExt as _; // tracing::Span to opentelemetry::Context
-
-    tracing::Span::current()
-        .context()
-        .span()
-        .span_context()
-        .trace_id()
 }
 
 /// Specifies the format of log output, either JSON or plain-text.
@@ -147,29 +123,5 @@ pub async fn init(
             .map_err(Error::SetGlobalDefaultError)
     } else {
         tracing::subscriber::set_global_default(collector).map_err(Error::SetGlobalDefaultError)
-    }
-}
-
-#[cfg(all(test, feature = "integration-tests"))]
-mod test {
-    // This test only works when telemetry is initialized fully
-    // and requires OPENTELEMETRY_ENDPOINT_URL pointing to a valid server
-    #[tokio::test]
-    async fn integration_get_trace_id_returns_valid_traces() {
-        use super::*;
-        let opentelemetry_endpoint_url = std::env::var("OPENTELEMETRY_ENDPOINT_URL").ok();
-        super::init(
-            "info",
-            LogFormat::Text,
-            opentelemetry_endpoint_url.as_deref(),
-            0.1,
-        )
-        .await
-        .unwrap();
-        #[tracing::instrument(name = "test_span")] // need to be in an instrumented fn
-        fn test_trace_id() -> TraceId {
-            get_trace_id()
-        }
-        assert_ne!(test_trace_id(), TraceId::INVALID, "valid trace");
     }
 }

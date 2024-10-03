@@ -14,7 +14,6 @@ path = "src/lib.rs"
 
 [features]
 default = []
-integration-tests = []
 
 [dependencies]
 clap = { workspace = true }
