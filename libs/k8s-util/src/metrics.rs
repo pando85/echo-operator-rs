@@ -7,7 +7,7 @@ use std::task::{Context, Poll};
 use futures::future::FutureExt;
 use http::Request;
 use prometheus_client::encoding::EncodeLabelSet;
-use prometheus_client::metrics::{family::Family, histogram::Histogram};
+use prometheus_client::metrics::{counter::Counter, family::Family, histogram::Histogram};
 use prometheus_client::registry::Registry;
 use tokio::time::Instant;
 use tower::{Layer, Service};
@@ -17,26 +17,41 @@ pub struct EndpointLabel {
     pub endpoint: String,
 }
 
+#[derive(Clone, Hash, PartialEq, Eq, EncodeLabelSet, Debug, Default)]
+pub struct StatusCodeLabel {
+    pub status_code: String,
+}
+
 pub struct MetricsLayer {
     request_histogram: Family<EndpointLabel, Histogram>,
+    requests_total: Family<StatusCodeLabel, Counter>,
 }
 
 impl MetricsLayer {
     pub fn new(registry: &mut Registry) -> Self {
         // TODO: remove bucket, implement summary (without quantiles):
         // https://github.com/prometheus/client_rust/pull/67
-        let request_histogram: Family<EndpointLabel, Histogram> =
-            Family::new_with_constructor(|| Histogram::new([].into_iter()));
+        let request_histogram = Family::<EndpointLabel, Histogram>::new_with_constructor(|| {
+            Histogram::new([].into_iter())
+        });
 
+        let requests_total = Family::<StatusCodeLabel, Counter>::default();
         // TODO: add Counter for all requests with status code
         registry.register(
-            "kubernetes_client",
-            "Summary of latencies for the Kubernetes client's requests by endpoint",
+            "kubernetes_client_http_request_duration",
+            "Summary of latencies for the Kubernetes client's requests by endpoint.",
             request_histogram.clone(),
         );
 
+        registry.register(
+            "kubernetes_client_http_requests_total",
+            "Total number of Kubernetes's client requests by status code.",
+            requests_total.clone(),
+        );
+
         Self {
-            request_histogram: request_histogram.clone(),
+            request_histogram,
+            requests_total,
         }
     }
 }
@@ -48,6 +63,7 @@ impl<S> Layer<S> for MetricsLayer {
         MetricsService {
             inner,
             request_histogram: self.request_histogram.clone(),
+            requests_total: self.requests_total.clone(),
         }
     }
 }
@@ -56,11 +72,12 @@ impl<S> Layer<S> for MetricsLayer {
 pub struct MetricsService<S> {
     inner: S,
     request_histogram: Family<EndpointLabel, Histogram>,
+    requests_total: Family<StatusCodeLabel, Counter>,
 }
 
-impl<S, ReqBody> Service<Request<ReqBody>> for MetricsService<S>
+impl<S, ReqBody, ResBody> Service<Request<ReqBody>> for MetricsService<S>
 where
-    S: Service<Request<ReqBody>>,
+    S: Service<Request<ReqBody>, Response = http::Response<ResBody>>,
     S::Future: Send + 'static,
 {
     type Response = S::Response;
@@ -81,10 +98,17 @@ where
 
         let fut = self.inner.call(req);
         let request_histogram = self.request_histogram.clone();
+        let requests_total = self.requests_total.clone();
         async move {
             let result = fut.await;
             let duration = start_time.elapsed().as_secs_f64();
             request_histogram.get_or_create(&labels).observe(duration);
+            if let Ok(ref response) = result {
+                let status_code = response.status().as_u16().to_string();
+                requests_total
+                    .get_or_create(&StatusCodeLabel { status_code })
+                    .inc();
+            }
             result
         }
         .boxed()
