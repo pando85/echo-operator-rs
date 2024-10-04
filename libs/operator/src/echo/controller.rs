@@ -1,4 +1,4 @@
-use crate::controller::{Context, State};
+use crate::controller::{Context, ControllerId, State};
 use crate::crd::echo::Echo;
 use crate::echo::reconcile::reconcile_echo;
 use crate::error::Error;
@@ -15,6 +15,8 @@ use kube::runtime::{watcher, WatchStreamExt};
 use tokio::time::Duration;
 use tracing::{debug, error, info};
 
+pub const CONTROLLER_ID: ControllerId = "echo";
+
 const SUBSCRIBE_BUFFER_SIZE: usize = 256;
 const RELOAD_BUFFER_SIZE: usize = 16;
 
@@ -25,15 +27,12 @@ fn error_policy<K: ResourceExt>(
 ) -> Action {
     // safe unwrap: deployment is a namespace scoped resource
     error!(msg = "failed reconciliation", namespace = %obj.namespace().unwrap(), name = %obj.name_any(), %error);
-    ctx.metrics.reconcile.set_failure(&obj, error);
+    ctx.metrics.reconcile.set_failure(error);
     Action::requeue(Duration::from_secs(5 * 60))
 }
 
 /// Initialize echoes controller and shared state (given the crd is installed)
-pub async fn run(state: State) {
-    let client = Client::try_default()
-        .await
-        .expect("failed to create kube Client");
+pub async fn run(state: State, client: Client) {
     let echo = Api::<Echo>::all(client.clone());
     if let Err(e) = echo.list(&ListParams::default().limit(1)).await {
         error!("CRD is not queryable; {e:?}. Is the CRD installed?");
@@ -92,7 +91,7 @@ pub async fn run(state: State) {
         .run(
             reconcile_echo,
             error_policy,
-            state.to_context(client, deployment_store),
+            state.to_context(client, CONTROLLER_ID, deployment_store),
         )
         .filter_map(|x| async move { std::result::Result::ok(x) })
         .for_each(|_| futures::future::ready(()));

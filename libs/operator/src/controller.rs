@@ -1,27 +1,16 @@
-use crate::metrics::Metrics;
+use crate::metrics::{ControllerMetrics, Metrics};
 
 use std::hash::Hash;
 use std::sync::Arc;
 
 use kube::client::Client;
 use kube::runtime::reflector::{Lookup, Store};
+use prometheus_client::registry::Registry;
 
-// Context for our reconciler
-#[derive(Clone)]
-pub struct Context<K: 'static + Lookup>
-where
-    K::DynamicType: Hash + Eq,
-{
-    /// Kubernetes client
-    pub client: Client,
-    /// Prometheus metrics
-    pub metrics: Arc<Metrics>,
-    /// Shared store
-    pub store: Arc<Store<K>>,
-}
+pub type ControllerId = &'static str;
 
 /// State shared between the controller and the web server
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct State {
     /// Metrics
     metrics: Arc<Metrics>,
@@ -29,6 +18,12 @@ pub struct State {
 
 /// State wrapper around the controller outputs for the web server
 impl State {
+    pub fn new(registry: Registry, controller_names: &[&'static str]) -> Self {
+        Self {
+            metrics: Arc::new(Metrics::new(registry, controller_names)),
+        }
+    }
+
     /// Metrics getter
     pub fn metrics(&self) -> String {
         let mut buffer = String::new();
@@ -41,6 +36,7 @@ impl State {
     pub fn to_context<K: 'static + Lookup>(
         &self,
         client: Client,
+        controller_id: ControllerId,
         store: Store<K>,
     ) -> Arc<Context<K>>
     where
@@ -48,8 +44,27 @@ impl State {
     {
         Arc::new(Context {
             client,
-            metrics: self.metrics.clone(),
+            metrics: self
+                .metrics
+                .controllers
+                .get(controller_id)
+                .expect("all CONTROLLER_IDs have to be registered")
+                .clone(),
             store: Arc::new(store),
         })
     }
+}
+
+// Context for our reconciler
+#[derive(Clone)]
+pub struct Context<K: 'static + Lookup>
+where
+    K::DynamicType: Hash + Eq,
+{
+    /// Kubernetes client
+    pub client: Client,
+    /// Prometheus metrics
+    pub metrics: Arc<ControllerMetrics>,
+    /// Shared store
+    pub store: Arc<Store<K>>,
 }

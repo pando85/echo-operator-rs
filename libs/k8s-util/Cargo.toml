@@ -1,5 +1,5 @@
 [package]
-name = "kaniop"
+name = "kaniop-k8s-util"
 version.workspace = true
 authors.workspace = true
 rust-version.workspace = true
@@ -8,17 +8,19 @@ license-file.workspace = true
 homepage.workspace = true
 repository.workspace = true
 
-[[bin]]
-name = "kaniop"
-path = "src/main.rs"
+[lib]
+name = "kaniop_k8s_util"
+path = "src/lib.rs"
+
+[features]
+default = []
 
 [dependencies]
-kaniop-k8s-util = { workspace = true }
-kaniop-operator = { workspace = true }
-clap = { workspace = true, features = ["cargo", "env"] }
 futures = { workspace = true }
 kube = { workspace = true }
-prometheus-client = { workspace = true }
 tokio = { workspace = true }
-actix-web = "4.9.0"
-anyhow = "1.0"
+prometheus-client = { workspace = true }
+tower = "0.4"
+http = "1.1"
+hyper-util = { version = "0.1.9", features = ["client-legacy", "http1", "tokio"] }
+url-escape = "0.1.1"
