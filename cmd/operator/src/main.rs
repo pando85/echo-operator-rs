@@ -12,10 +12,15 @@ use prometheus_client::registry::Registry;
 
 #[get("/metrics")]
 async fn metrics(c: Data<State>, _req: HttpRequest) -> impl Responder {
-    let metrics = c.metrics();
-    HttpResponse::Ok()
-        .content_type("application/openmetrics-text; version=1.0.0; charset=utf-8")
-        .body(metrics)
+    match c.metrics() {
+        Ok(metrics) => HttpResponse::Ok()
+            .content_type("application/openmetrics-text; version=1.0.0; charset=utf-8")
+            .body(metrics),
+        Err(e) => {
+            tracing::error!("Failed to get metrics: {:?}", e);
+            HttpResponse::InternalServerError().finish()
+        }
+    }
 }
 
 #[get("/health")]

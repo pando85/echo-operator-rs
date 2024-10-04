@@ -8,6 +8,9 @@ pub enum Error {
     #[error("Kube Error: {0}")]
     KubeError(#[source] kube::Error),
 
+    #[error("Formating Error: {0}")]
+    FormattingError(#[source] std::fmt::Error),
+
     #[error("Finalizer Error: {0}")]
     // NB: awkward type because finalizer::Error embeds the reconciler error (which is this)
     // so boxing this error to break cycles

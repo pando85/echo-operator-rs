@@ -20,5 +20,6 @@ futures = { workspace = true }
 kube = { workspace = true }
 prometheus-client = { workspace = true }
 tokio = { workspace = true }
+tracing = { workspace = true }
 actix-web = "4.9.0"
 anyhow = "1.0"

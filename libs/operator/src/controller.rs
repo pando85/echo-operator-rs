@@ -1,3 +1,4 @@
+use crate::error::{Error, Result};
 use crate::metrics::{ControllerMetrics, Metrics};
 
 use std::hash::Hash;
@@ -25,11 +26,12 @@ impl State {
     }
 
     /// Metrics getter
-    pub fn metrics(&self) -> String {
+    pub fn metrics(&self) -> Result<String> {
         let mut buffer = String::new();
         let registry = &*self.metrics.registry;
-        prometheus_client::encoding::text::encode(&mut buffer, registry).unwrap();
-        buffer
+        prometheus_client::encoding::text::encode(&mut buffer, registry)
+            .map_err(Error::FormattingError)?;
+        Ok(buffer)
     }
 
     /// Create a Controller Context that can update State

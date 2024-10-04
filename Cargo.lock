@@ -1499,6 +1499,7 @@ dependencies = [
  "kube",
  "prometheus-client",
  "tokio",
+ "tracing",
 ]
 
 [[package]]
