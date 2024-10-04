@@ -90,7 +90,7 @@ jobs:
           args: --locked --target=${{ matrix.job.target }}
 
       - name: Run integration tests
-        run: make integration-tests
+        run: make integration-test
 
       - name: Create kind cluster with 5 nodes
         uses: helm/kind-action@v1.10.0
@@ -104,7 +104,7 @@ jobs:
           ./get_helm.sh
 
       - name: Run e2e tests
-        run: make e2e-tests
+        run: make e2e-test
 
       - name: Extract crate information
         shell: bash

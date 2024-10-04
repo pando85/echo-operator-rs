@@ -9,7 +9,7 @@ path = "e2e/lib.rs"
 
 [features]
 default = []
-e2e-tests = []
+e2e-test = []
 
 [dependencies]
 kaniop-operator = { path = "../libs/operator" }

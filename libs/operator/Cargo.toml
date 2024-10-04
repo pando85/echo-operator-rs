@@ -14,7 +14,7 @@ path = "src/lib.rs"
 
 [features]
 default = []
-integration-tests = []
+integration-test = []
 
 [dependencies]
 clap = { workspace = true }
@@ -24,11 +24,11 @@ kube = { workspace = true }
 prometheus-client = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }
+tracing = { workspace = true }
 serde = "1.0"
 schemars = "0.8"
 thiserror = "1.0"
 chrono = { version = "0.4.26", features = ["serde"] }
-tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["json", "env-filter"] }
 tracing-opentelemetry = "0.26"
 opentelemetry = { version = "0.25", features = ["trace"] }

@@ -94,7 +94,7 @@ update-changelog:	## automatically update changelog based on commits
 .PHONY: publish
 publish: crd-code
 publish:	## publish crates
-	@for package in $(shell find . -mindepth 2 -not -path './e2e-tests/*' -name Cargo.toml -exec dirname {} \; | sort -r );do \
+	@for package in $(shell find . -mindepth 2 -not -path './tests/e2e/*' -name Cargo.toml -exec dirname {} \; | sort -r );do \
 		cd $$package; \
 		cargo publish; \
 		cd -; \
@@ -117,13 +117,13 @@ push-image-arm64: CARGO_TARGET=aarch64-unknown-linux-gnu
 push-images: crd-code $(IMAGE_ARCHITECTURES:%=push-image-%)
 push-images:	## push images for all architectures
 
-.PHONY: integration-tests
-integration-tests:	## run integration tests
+.PHONY: integration-test
+integration-test:	## run integration tests
 	@docker run -d --name tempo \
 		-v $(shell pwd)/tests/integration/config/tempo.yaml:/etc/tempo.yaml \
 		-p 4317:4317 \
 		grafana/tempo:latest -config.file=/etc/tempo.yaml
-	OPENTELEMETRY_ENDPOINT_URL=localhost:4317 cargo test --features integration-tests integration; \
+	OPENTELEMETRY_ENDPOINT_URL=localhost:4317 cargo test --features integration-test integration; \
 		STATUS=$$?; \
 		docker rm -f tempo >/dev/null 2>&1; \
 		exit $$STATUS
@@ -156,14 +156,14 @@ e2e:	## prepare e2e tests environment
 		fi; \
 	done
 
-.PHONY: e2e-tests
-e2e-tests: e2e
-e2e-tests:	## run e2e tests
+.PHONY: e2e-test
+e2e-test: e2e
+e2e-test:	## run e2e tests
 	@if [ "$$(kubectl config current-context)" != "$(KUBE_CONTEXT)" ]; then \
 		echo "ERROR: switch to kind context: kubectl config use-context $(KUBE_CONTEXT)"; \
 		exit 1; \
 	fi
-	cargo test -p tests --features e2e-tests
+	cargo test -p tests --features e2e-test
 
 .PHONY: clean-e2e
 clean-e2e:	## clean e2e environment

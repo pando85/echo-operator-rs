@@ -1,4 +1,4 @@
-#[cfg(all(test, feature = "e2e-tests"))]
+#[cfg(all(test, feature = "e2e-test"))]
 mod test {
     use std::time::Duration;
 
@@ -158,7 +158,7 @@ mod test {
         deployment_api
             .patch(
                 name,
-                &PatchParams::apply("e2e-tests").force(),
+                &PatchParams::apply("e2e-test").force(),
                 &Patch::Apply(&deploy),
             )
             .await
@@ -183,7 +183,7 @@ mod test {
         echo_api
             .patch(
                 name,
-                &PatchParams::apply("e2e-tests").force(),
+                &PatchParams::apply("e2e-test").force(),
                 &Patch::Apply(&echo),
             )
             .await
