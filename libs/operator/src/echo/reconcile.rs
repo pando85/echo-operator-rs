@@ -38,6 +38,7 @@ pub async fn reconcile_echo(echo: Arc<Echo>, ctx: Arc<Context<Deployment>>) -> R
 }
 
 impl Echo {
+    #[inline]
     fn get_namespace(&self) -> String {
         // safe unwrap: Echo is namespaced scoped
         self.namespace().unwrap()

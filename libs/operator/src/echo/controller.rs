@@ -72,7 +72,9 @@ pub async fn run(state: State, client: Client) {
                         );
                         // trigger reconcile on delete for echo from owner reference
                         // TODO: trigger only onwer reference
-                        reload_tx_clone.try_send(()).unwrap();
+                        let _ignore_errors = reload_tx_clone
+                            .try_send(())
+                            .map_err(|e| error!(msg = "failed to trigger reconcile on delete", %e));
                     }
                 }
                 Err(e) => error!(msg = "unexpected error when watching resource", %e),
