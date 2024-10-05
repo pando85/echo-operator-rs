@@ -39,13 +39,13 @@ impl MetricsLayer {
         // TODO: add Counter for all requests with status code
         registry.register(
             "kubernetes_client_http_request_duration",
-            "Summary of latencies for the Kubernetes client's requests by endpoint.",
+            "Summary of latencies for the Kubernetes client's requests by endpoint",
             request_histogram.clone(),
         );
 
         registry.register(
-            "kubernetes_client_http_requests_total",
-            "Total number of Kubernetes's client requests by status code.",
+            "kubernetes_client_http_requests",
+            "Total number of Kubernetes's client requests by status code",
             requests_total.clone(),
         );
 

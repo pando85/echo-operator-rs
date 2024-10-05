@@ -2,6 +2,7 @@ use crate::controller::{Context, ControllerId, State};
 use crate::crd::echo::Echo;
 use crate::echo::reconcile::reconcile_echo;
 use crate::error::Error;
+use crate::metrics;
 
 use std::sync::Arc;
 
@@ -27,7 +28,7 @@ fn error_policy<K: ResourceExt>(
 ) -> Action {
     // safe unwrap: deployment is a namespace scoped resource
     error!(msg = "failed reconciliation", namespace = %obj.namespace().unwrap(), name = %obj.name_any(), %error);
-    ctx.metrics.reconcile.set_failure(error);
+    ctx.metrics.reconcile_failure_set(error);
     Action::requeue(Duration::from_secs(5 * 60))
 }
 
@@ -49,6 +50,7 @@ pub async fn run(state: State, client: Client) {
 
     let deployment = Api::<Deployment>::all(client.clone());
 
+    let ctx = state.to_context(client, CONTROLLER_ID, deployment_store);
     // TODO: remove for each trigger on delete logic when
     // (dispatch delete events issue)[https://github.com/kube-rs/kube/issues/1590] is solved
     let deployment_watch = watcher(
@@ -59,25 +61,45 @@ pub async fn run(state: State, client: Client) {
     .reflect_shared(writer)
     .for_each(|res| {
         let mut reload_tx_clone = reload_tx.clone();
+        let ctx = ctx.clone();
         async move {
             match res {
                 Ok(event) => {
                     debug!("watched event");
-                    if let watcher::Event::Delete(d) = event {
-                        debug!(
-                            msg = "deleted deployment",
-                            // safe unwrap: deployment is a namespace scoped resource
-                            namespace = d.namespace().unwrap(),
-                            name = d.name_any()
-                        );
-                        // trigger reconcile on delete for echo from owner reference
-                        // TODO: trigger only onwer reference
-                        let _ignore_errors = reload_tx_clone
-                            .try_send(())
-                            .map_err(|e| error!(msg = "failed to trigger reconcile on delete", %e));
+                    match event {
+                        watcher::Event::Delete(d) => {
+                            debug!(
+                                msg = "deleted deployment",
+                                // safe unwrap: deployment is a namespace scoped resource
+                                namespace = d.namespace().unwrap(),
+                                name = d.name_any()
+                            );
+                            // trigger reconcile on delete for echo from owner reference
+                            // TODO: trigger only onwer reference
+                            let _ignore_errors = reload_tx_clone.try_send(()).map_err(
+                                |e| error!(msg = "failed to trigger reconcile on delete", %e),
+                            );
+                            ctx.metrics
+                                .triggered_inc(metrics::Action::Delete, "Deployment");
+                        }
+                        watcher::Event::Apply(d) => {
+                            debug!(
+                                msg = "applied deployment",
+                                // safe unwrap: deployment is a namespace scoped resource
+                                namespace = d.namespace().unwrap(),
+                                name = d.name_any()
+                            );
+                            ctx.metrics
+                                .triggered_inc(metrics::Action::Apply, "Deployment");
+                        }
+                        _ => {}
                     }
                 }
-                Err(e) => error!(msg = "unexpected error when watching resource", %e),
+
+                Err(e) => {
+                    error!(msg = "unexpected error when watching resource", %e);
+                    ctx.metrics.watch_operations_failed_inc();
+                }
             }
         }
     });
@@ -90,14 +112,11 @@ pub async fn run(state: State, client: Client) {
         .owns_shared_stream(subscriber)
         .reconcile_all_on(reload_rx.map(|_| ()))
         .shutdown_on_signal()
-        .run(
-            reconcile_echo,
-            error_policy,
-            state.to_context(client, CONTROLLER_ID, deployment_store),
-        )
+        .run(reconcile_echo, error_policy, ctx.clone())
         .filter_map(|x| async move { std::result::Result::ok(x) })
         .for_each(|_| futures::future::ready(()));
 
+    ctx.metrics.ready_set(1);
     tokio::select! {
         _ = echo_controller => {},
         _ = deployment_watch => {}

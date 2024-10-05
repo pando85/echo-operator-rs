@@ -26,14 +26,14 @@ static STATUS_PROGRESSING: &str = "Progressing";
 pub async fn reconcile_echo(echo: Arc<Echo>, ctx: Arc<Context<Deployment>>) -> Result<Action> {
     let trace_id = telemetry::get_trace_id();
     Span::current().record("trace_id", field::display(&trace_id));
-    let _timer = ctx.metrics.reconcile.count_and_measure(&trace_id);
+    let _timer = ctx.metrics.reconcile_count_and_measure(&trace_id);
     info!(msg = "reconciling Echo");
 
-    let _ignore_errors = echo
-        .reconcile_status(ctx.clone())
-        .await
-        .map_err(|e| debug!(msg = "failed to reconcile status", %e));
-    echo.patch(ctx.client.clone()).await?;
+    let _ignore_errors = echo.update_status(ctx.clone()).await.map_err(|e| {
+        debug!(msg = "failed to reconcile status", %e);
+        ctx.metrics.status_update_errors_inc();
+    });
+    echo.patch(ctx).await?;
     Ok(Action::requeue(Duration::from_secs(5 * 60)))
 }
 
@@ -44,16 +44,18 @@ impl Echo {
         self.namespace().unwrap()
     }
 
-    async fn patch(&self, client: Client) -> Result<Deployment, Error> {
-        let deployment_api = Api::<Deployment>::namespaced(client.clone(), &self.get_namespace());
+    async fn patch(&self, ctx: Arc<Context<Deployment>>) -> Result<Deployment, Error> {
+        let namespace = self.get_namespace();
+        let deployment_api = Api::<Deployment>::namespaced(ctx.client.clone(), &namespace);
         let owner_references = self.controller_owner_ref(&()).map(|oref| vec![oref]);
 
+        let name = self.name_any();
         let labels: BTreeMap<String, String> = self
             .labels()
             .iter()
             .map(|(k, v)| (k.to_owned(), v.to_owned()))
             .chain([
-                ("app".to_owned(), self.name_any()),
+                ("app".to_owned(), name.clone()),
                 ("app.kubernetes.io/name".to_owned(), "echo".to_owned()),
                 (
                     "app.kubernetes.io/managed-by".to_owned(),
@@ -62,10 +64,12 @@ impl Echo {
             ])
             .collect();
 
+        ctx.metrics
+            .spec_replicas_set(&namespace, &name, self.spec.replicas);
         let deployment = Deployment {
             metadata: ObjectMeta {
                 name: Some(self.name_any()),
-                namespace: Some(self.get_namespace()),
+                namespace: Some(namespace),
                 labels: Some(labels.clone()),
                 owner_references,
                 ..ObjectMeta::default()
@@ -112,7 +116,8 @@ impl Echo {
                 match e {
                     kube::Error::Api(ae) if ae.code == 422 => {
                         info!(msg = "recreating Deployment because the update operation wasn't possible", reason=ae.reason);
-                        self.delete_deployment(client.clone()).await?;
+                        self.delete_deployment(ctx.client.clone()).await?;
+                        ctx.metrics.reconcile_deploy_delete_create_inc();
                         deployment_api
                             .patch(
                                 &self.name_any(),
@@ -137,7 +142,7 @@ impl Echo {
         Ok(())
     }
 
-    async fn reconcile_status(&self, ctx: Arc<Context<Deployment>>) -> Result<()> {
+    async fn update_status(&self, ctx: Arc<Context<Deployment>>) -> Result<()> {
         let namespace = &self.get_namespace();
         let deployment_ref =
             ObjectRef::<Deployment>::new_with(&self.name_any(), ()).within(namespace);
