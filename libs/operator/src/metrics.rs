@@ -37,7 +37,6 @@ impl Metrics {
     }
 }
 
-// TODO: reduce code with macro derive
 #[derive(Clone, Default)]
 pub struct ControllerMetrics {
     controller: String,
