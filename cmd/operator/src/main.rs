@@ -1,10 +1,10 @@
 use actix_web::{
     get, middleware, web::Data, App, HttpRequest, HttpResponse, HttpServer, Responder,
 };
-use kaniop_k8s_util::client::new_client_with_metrics;
-use kaniop_operator::controller::State;
-use kaniop_operator::echo;
-use kaniop_operator::telemetry;
+use echo_operator::controller::State;
+use echo_operator::echo;
+use echo_operator::telemetry;
+use echo_operator_k8s_util::client::new_client_with_metrics;
 
 use clap::{crate_authors, crate_description, crate_version, Parser};
 use kube::Config;
@@ -30,7 +30,7 @@ async fn health(_: HttpRequest) -> impl Responder {
 
 #[derive(Parser, Debug)]
 #[command(
-    name="kaniop",
+    name="echo-operator",
     about = crate_description!(),
     version = crate_version!(),
     author = crate_authors!("\n"),
@@ -40,7 +40,7 @@ struct Args {
     #[arg(short, long, default_value_t = 8080, env)]
     port: u32,
 
-    /// Set logging filter directive for `tracing_subscriber::filter::EnvFilter`. Example: "info,kube=debug,kaniop=debug"
+    /// Set logging filter directive for `tracing_subscriber::filter::EnvFilter`. Example: "info,kube=debug,echo-operator=debug"
     #[arg(long, default_value = "info", env)]
     log_filter: String,
 
@@ -76,7 +76,7 @@ async fn main() -> anyhow::Result<()> {
     )
     .await?;
 
-    let mut registry = Registry::with_prefix("kaniop");
+    let mut registry = Registry::with_prefix("echo-operator");
     let config = Config::infer().await?;
     let client = new_client_with_metrics(config, &mut registry).await?;
     let controllers = [echo::controller::CONTROLLER_ID];

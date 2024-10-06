@@ -1,14 +1,14 @@
-nameOverride: "kaniop-test"
+nameOverride: "echo-operator-test"
 
 additionalLabels:
-  app: kaniop-test
+  app: echo-operator-test
 
 revisionHistoryLimit: 10
 
-fullnameOverride: "kaniop-test-full-name"
+fullnameOverride: "echo-operator-test-full-name"
 
 image:
-  repository: ghcr.io/pando85/kaniop
+  repository: ghcr.io/pando85/echo-operator
   tag: 0.0.0
   pullPolicy: IfNotPresent
 
@@ -22,12 +22,12 @@ rbac:
 
 serviceAccount:
   create: true
-  name: "kaniop-foo"
+  name: "echo-operator-foo"
   annotations:
     eks.amazonaws.com/role-arn: "arn:aws:iam::123456789012:role/eksctl-eks-cluster-nodegroup-ng-NodeInstanceRole-1GZJ"
 
 logging:
-  level: "info,kube=debug,kaniop=debug"
+  level: "info,kube=debug,echo-operator=debug"
 
 securityContext:
   fsGroup: 65534
@@ -61,7 +61,7 @@ tracing:
   port: 4317
 
 env:
-  - name: KANIOP_EXAMPLE
+  - name: ECHO_OPERATOR_EXAMPLE
     value: "booo"
 
 envFrom:
@@ -104,7 +104,7 @@ topologySpreadConstraints:
     whenUnsatisfiable: DoNotSchedule
     labelSelector:
       matchLabels:
-        app.kubernetes.io/name: kaniop
+        app.kubernetes.io/name: echo-operator
 
 nodeSelector:
   kubernetes.io/os: linux

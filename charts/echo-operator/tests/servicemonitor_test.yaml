@@ -12,14 +12,14 @@ tests:
       metrics.enabled: true
       metrics.serviceMonitor.enabled: true
     release:
-      name: kaniop
-      namespace: kaniop
+      name: echo-operator
+      namespace: echo-operator
     asserts:
       - hasDocuments:
           count: 1
       - equal:
           path: metadata.name
-          value: kaniop
+          value: echo-operator
       - exists:
           path: metadata.labels
       - notExists:

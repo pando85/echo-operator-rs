@@ -1,5 +1,5 @@
 [package]
-name = "kaniop"
+name = "echo-operator-bin"
 version.workspace = true
 authors.workspace = true
 rust-version.workspace = true
@@ -9,12 +9,12 @@ homepage.workspace = true
 repository.workspace = true
 
 [[bin]]
-name = "kaniop"
+name = "echo-operator"
 path = "src/main.rs"
 
 [dependencies]
-kaniop-k8s-util = { workspace = true }
-kaniop-operator = { workspace = true }
+echo-operator-k8s-util = { workspace = true }
+echo-operator = { workspace = true }
 clap = { workspace = true, features = ["cargo", "env"] }
 futures = { workspace = true }
 kube = { workspace = true }

@@ -59,7 +59,7 @@ impl Echo {
                 ("app.kubernetes.io/name".to_owned(), "echo".to_owned()),
                 (
                     "app.kubernetes.io/managed-by".to_owned(),
-                    "kaniop".to_owned(),
+                    "echo-operator".to_owned(),
                 ),
             ])
             .collect();

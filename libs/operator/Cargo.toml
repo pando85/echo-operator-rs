@@ -1,5 +1,5 @@
 [package]
-name = "kaniop-operator"
+name = "echo-operator"
 version.workspace = true
 authors.workspace = true
 rust-version.workspace = true
@@ -9,7 +9,7 @@ homepage.workspace = true
 repository.workspace = true
 
 [lib]
-name = "kaniop_operator"
+name = "echo_operator"
 path = "src/lib.rs"
 
 [features]

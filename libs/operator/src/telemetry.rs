@@ -32,7 +32,7 @@ pub enum Error {
 /// # Example
 ///
 /// ```rust
-/// # use kaniop_operator::telemetry::get_trace_id;
+/// # use echo_operator::telemetry::get_trace_id;
 /// let trace_id = get_trace_id();
 /// println!("Current trace ID: {:?}", trace_id);
 /// ```
@@ -72,7 +72,7 @@ pub enum LogFormat {
 /// # Example
 ///
 /// ```rust
-/// # use kaniop_operator::telemetry::{init, LogFormat};
+/// # use echo_operator::telemetry::{init, LogFormat};
 ///
 /// #[tokio::main]
 /// async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -133,7 +133,10 @@ pub async fn init(
                     .with_max_events_per_span(64)
                     .with_max_attributes_per_span(16)
                     .with_max_events_per_span(16)
-                    .with_resource(Resource::new(vec![KeyValue::new("service.name", "kaniop")])),
+                    .with_resource(Resource::new(vec![KeyValue::new(
+                        "service.name",
+                        "echo-operator",
+                    )])),
             )
             .install_batch(opentelemetry_sdk::runtime::Tokio)
             .map_err(Error::TraceError)?;

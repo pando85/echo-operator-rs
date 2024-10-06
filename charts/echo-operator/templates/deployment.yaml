@@ -1,9 +1,9 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "kaniop.fullname" . }}
+  name: {{ include "echo-operator.fullname" . }}
   labels:
-    {{- include "kaniop.labels" . | nindent 4 }}
+    {{- include "echo-operator.labels" . | nindent 4 }}
   {{- if .Values.deploymentAnnotations }}
   annotations:
     {{ toYaml .Values.deploymentAnnotations | indent 4 }}
@@ -13,17 +13,17 @@ spec:
   revisionHistoryLimit: {{ .Values.revisionHistoryLimit }}
   selector:
     matchLabels:
-      {{- include "kaniop.selectorLabels" . | nindent 6 }}
+      {{- include "echo-operator.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       labels:
-        {{- include "kaniop.selectorLabels" . | nindent 8 }}
+        {{- include "echo-operator.selectorLabels" . | nindent 8 }}
       {{- if .Values.podAnnotations }}
       annotations:
         {{ toYaml .Values.podAnnotations | indent 8 }}
       {{- end }}
     spec:
-      serviceAccountName: {{ include "kaniop.serviceAccountName" . }}
+      serviceAccountName: {{ include "echo-operator.serviceAccountName" . }}
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
@@ -31,7 +31,7 @@ spec:
       securityContext:
         {{- toYaml .Values.securityContext | nindent 8 }}
       containers:
-        - name: {{ include "kaniop.name" . }}
+        - name: {{ include "echo-operator.name" . }}
           image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           securityContext:

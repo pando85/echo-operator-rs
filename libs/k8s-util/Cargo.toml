@@ -1,5 +1,5 @@
 [package]
-name = "kaniop-k8s-util"
+name = "echo-operator-k8s-util"
 version.workspace = true
 authors.workspace = true
 rust-version.workspace = true
@@ -9,7 +9,7 @@ homepage.workspace = true
 repository.workspace = true
 
 [lib]
-name = "kaniop_k8s_util"
+name = "echo_operator_k8s_util"
 path = "src/lib.rs"
 
 [features]

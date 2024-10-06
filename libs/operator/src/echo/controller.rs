@@ -55,7 +55,7 @@ pub async fn run(state: State, client: Client) {
     // (dispatch delete events issue)[https://github.com/kube-rs/kube/issues/1590] is solved
     let deployment_watch = watcher(
         deployment.clone(),
-        watcher::Config::default().labels("app.kubernetes.io/managed-by=kaniop"),
+        watcher::Config::default().labels("app.kubernetes.io/managed-by=echo-operator"),
     )
     .default_backoff()
     .reflect_shared(writer)

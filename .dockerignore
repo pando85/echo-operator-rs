@@ -5,6 +5,6 @@ target*/*/build
 target*/*/deps
 target*/*/examples
 target*/*/incremental
-target*/*/kaniop.*
+target*/*/echo-operator.*
 target*/*/kanio.*
 target*/*/lib*

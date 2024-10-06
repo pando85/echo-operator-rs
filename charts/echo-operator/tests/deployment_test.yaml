@@ -5,22 +5,22 @@ templates:
 tests:
   - it: Render with default values and expected release
     release:
-      name: kaniop
-      namespace: kaniop
+      name: echo-operator
+      namespace: echo-operator
     asserts:
       - hasDocuments:
           count: 1
       - equal:
           path: metadata.name
-          value: kaniop
+          value: echo-operator
       - equal:
           path: spec.template.spec.serviceAccountName
-          value: kaniop
+          value: echo-operator
       - notExists:
           path: spec.template.spec.imagePullSecrets
       - equal:
           path: spec.template.spec.containers[0].name
-          value: kaniop
+          value: echo-operator
       - equal:
           path: spec.template.spec.containers[0].ports
           value:
@@ -54,7 +54,7 @@ tests:
           count: 1
       - matchRegex:
           path: metadata.name
-          pattern: ^.*-kaniop$
+          pattern: ^.*-echo-operator$
   - it: Render with all values
     values:
       - values/all.yaml
@@ -63,14 +63,14 @@ tests:
           count: 1
       - equal:
           path: metadata.name
-          value: kaniop-test-full-name
+          value: echo-operator-test-full-name
       - exists:
           path: spec.template.spec.serviceAccountName
       - exists:
           path: spec.template.spec.imagePullSecrets
       - equal:
           path: spec.template.spec.containers[0].name
-          value: kaniop-test
+          value: echo-operator-test
       - equal:
           path: spec.template.spec.containers[0].ports
           value:

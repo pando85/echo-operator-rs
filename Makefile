@@ -3,12 +3,12 @@ VERSION ?= $(shell git rev-parse --short HEAD)
 KUBERNETES_VERSION = 1.30
 KIND_CLUSTER_NAME = chart-testing
 KUBE_CONTEXT := kind-$(KIND_CLUSTER_NAME)
-KANIOP_NAMESPACE := kaniop
+ECHO_OPERATOR_NAMESPACE := echo-operator
 KOPIUM_PATH ?= kopium
 export CARGO_TARGET_DIR ?= target-$(CARGO_TARGET)
 CARGO_TARGET ?= x86_64-unknown-linux-gnu
 CARGO_BUILD_PARAMS = --target=$(CARGO_TARGET) --release
-DOCKER_IMAGE ?= ghcr.io/$(GH_ORG)/kaniop:$(VERSION)
+DOCKER_IMAGE ?= ghcr.io/$(GH_ORG)/echo-operator:$(VERSION)
 DOCKER_BUILD_PARAMS = --build-arg "CARGO_TARGET_DIR=$(CARGO_TARGET_DIR)" \
 		--build-arg "CARGO_BUILD_TARGET=$(CARGO_TARGET)" \
 		-t $(DOCKER_IMAGE) .
@@ -16,7 +16,7 @@ IMAGE_ARCHITECTURES := amd64 arm64
 # build images in parallel
 MAKEFLAGS += -j2
 CRD_TARGET_DIR := libs/operator/src/crd
-CRD_DIR := charts/kaniop/crds
+CRD_DIR := charts/echo-operator/crds
 CRD_FILES := $(wildcard $(CRD_DIR)/*.yaml)
 
 .DEFAULT: help
@@ -60,7 +60,7 @@ test: lint
 	cargo test
 
 .PHONY: build
-build:	## compile kaniop
+build:	## compile echo-operator
 build: crd-code release
 
 .PHONY: release
@@ -77,14 +77,14 @@ release:	## compile release binary
 	else \
 		cargo build $(CARGO_BUILD_PARAMS); \
 	fi
-	@echo "binary is in $(CARGO_TARGET_DIR)/$(CARGO_TARGET)/release/kaniop"
+	@echo "binary is in $(CARGO_TARGET_DIR)/$(CARGO_TARGET)/release/echo-operator"
 
 .PHONY: update-version
 update-version: ## update version from VERSION file in all Cargo.toml manifests
 	@VERSION=$$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n1); \
-	sed -i -E "s/^(kaniop\_.*version\s=\s)\"(.*)\"/\1\"$$VERSION\"/gm" */*/Cargo.toml && \
-	sed -i -E "s/^(\s+tag:\s)(.*)/\1$$VERSION/gm" charts/kaniop/values.yaml && \
-	cargo update -p kaniop_operator && \
+	sed -i -E "s/^(echo-operator\_.*version\s=\s)\"(.*)\"/\1\"$$VERSION\"/gm" */*/Cargo.toml && \
+	sed -i -E "s/^(\s+tag:\s)(.*)/\1$$VERSION/gm" charts/echo-operator/values.yaml && \
+	cargo update -p echo_operator && \
 	echo updated to version "$$VERSION" cargo and helm files
 
 .PHONY: update-changelog
@@ -141,14 +141,14 @@ e2e:	## prepare e2e tests environment
 		echo "ERROR: switch to kind context: kubectl config use-context $(KUBE_CONTEXT)"; \
 		exit 1; \
 	fi; \
-	kubectl create namespace $(KANIOP_NAMESPACE); \
-	helm install kaniop ./charts/kaniop \
-		--namespace $(KANIOP_NAMESPACE) \
+	kubectl create namespace $(ECHO_OPERATOR_NAMESPACE); \
+	helm install echo-operator ./charts/echo-operator \
+		--namespace $(ECHO_OPERATOR_NAMESPACE) \
 		--set image.tag=$(VERSION) \
-		--set logging.level='info\,kaniop=trace'; \
+		--set logging.level='info\,echo-operator=trace'; \
 	for i in {1..20}; do \
-		if kubectl -n $(KANIOP_NAMESPACE) get deploy $(KANIOP_NAMESPACE) | grep -q '1/1'; then \
-			echo "Kaniop deployment is ready"; \
+		if kubectl -n $(ECHO_OPERATOR_NAMESPACE) get deploy $(ECHO_OPERATOR_NAMESPACE) | grep -q '1/1'; then \
+			echo "Echo-operator deployment is ready"; \
 			break; \
 		else \
 			echo "Retrying in 5 seconds..."; \

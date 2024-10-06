@@ -2,10 +2,10 @@
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: {{ include "kaniop.fullname" . }}
+  name: {{ include "echo-operator.fullname" . }}
   namespace: {{ default .Release.Namespace .Values.metrics.serviceMonitor.namespace | quote }}
   labels:
-    {{- include "kaniop.labels" . | nindent 4 }}
+    {{- include "echo-operator.labels" . | nindent 4 }}
   {{- with .Values.metrics.serviceMonitor.additionalLabels }}
     {{- toYaml . | nindent 4 }}
   {{- end }}
@@ -39,5 +39,5 @@ spec:
       - {{ .Release.Namespace }}
   selector:
     matchLabels:
-      {{- include "kaniop.selectorLabels" . | nindent 6 }}
+      {{- include "echo-operator.selectorLabels" . | nindent 6 }}
 {{- end }}

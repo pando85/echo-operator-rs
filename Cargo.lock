@@ -824,6 +824,64 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0d6ef0072f8a535281e4876be788938b528e9a1d43900b82c2569af7da799125"
 
 [[package]]
+name = "echo-operator"
+version = "0.0.0"
+dependencies = [
+ "assert-json-diff",
+ "chrono",
+ "clap",
+ "futures",
+ "http 1.1.0",
+ "hyper 1.4.1",
+ "k8s-openapi",
+ "kube",
+ "opentelemetry",
+ "opentelemetry-otlp",
+ "opentelemetry_sdk",
+ "prometheus-client",
+ "schemars",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tokio",
+ "tonic 0.9.2",
+ "tower-test",
+ "tracing",
+ "tracing-opentelemetry",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "echo-operator-bin"
+version = "0.0.0"
+dependencies = [
+ "actix-web",
+ "anyhow",
+ "clap",
+ "echo-operator",
+ "echo-operator-k8s-util",
+ "futures",
+ "kube",
+ "prometheus-client",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "echo-operator-k8s-util"
+version = "0.0.0"
+dependencies = [
+ "futures",
+ "http 1.1.0",
+ "hyper-util",
+ "kube",
+ "prometheus-client",
+ "tokio",
+ "tower 0.4.13",
+ "url-escape",
+]
+
+[[package]]
 name = "either"
 version = "1.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1484,64 +1542,6 @@ dependencies = [
  "serde",
  "serde-value",
  "serde_json",
-]
-
-[[package]]
-name = "kaniop"
-version = "0.0.0"
-dependencies = [
- "actix-web",
- "anyhow",
- "clap",
- "futures",
- "kaniop-k8s-util",
- "kaniop-operator",
- "kube",
- "prometheus-client",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "kaniop-k8s-util"
-version = "0.0.0"
-dependencies = [
- "futures",
- "http 1.1.0",
- "hyper-util",
- "kube",
- "prometheus-client",
- "tokio",
- "tower 0.4.13",
- "url-escape",
-]
-
-[[package]]
-name = "kaniop-operator"
-version = "0.0.0"
-dependencies = [
- "assert-json-diff",
- "chrono",
- "clap",
- "futures",
- "http 1.1.0",
- "hyper 1.4.1",
- "k8s-openapi",
- "kube",
- "opentelemetry",
- "opentelemetry-otlp",
- "opentelemetry_sdk",
- "prometheus-client",
- "schemars",
- "serde",
- "serde_json",
- "thiserror",
- "tokio",
- "tonic 0.9.2",
- "tower-test",
- "tracing",
- "tracing-opentelemetry",
- "tracing-subscriber",
 ]
 
 [[package]]
@@ -2613,8 +2613,8 @@ checksum = "a7065abeca94b6a8a577f9bd45aa0867a2238b74e8eb67cf10d492bc39351394"
 name = "tests"
 version = "0.0.0"
 dependencies = [
+ "echo-operator",
  "k8s-openapi",
- "kaniop-operator",
  "kube",
  "serde_json",
  "tokio",

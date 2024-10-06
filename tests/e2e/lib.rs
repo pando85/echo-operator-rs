@@ -2,8 +2,8 @@
 mod test {
     use std::time::Duration;
 
+    use echo_operator::crd::echo::{Echo, EchoSpec};
     use k8s_openapi::api::apps::v1::Deployment;
-    use kaniop_operator::crd::echo::{Echo, EchoSpec};
     use kube::api::{Api, Patch, PatchParams, PostParams};
     use kube::client::Client;
     use kube::runtime::wait::{await_condition, conditions, Condition};

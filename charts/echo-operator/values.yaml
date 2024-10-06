@@ -1,4 +1,4 @@
-## Provide a name in place of `kaniop`
+## Provide a name in place of `echo-operator`
 nameOverride: ""
 
 additionalLabels: {}
@@ -6,11 +6,11 @@ additionalLabels: {}
 ## Number of old replicasets to retain
 revisionHistoryLimit: 3
 
-## String to fully override `"kaniop.fullname"`
+## String to fully override `"echo-operator.fullname"`
 fullnameOverride: ""
 
 image:
-  repository: ghcr.io/pando85/kaniop
+  repository: ghcr.io/pando85/echo-operator
   tag: 0.0.0
   pullPolicy: IfNotPresent
 
@@ -30,7 +30,7 @@ serviceAccount:
   annotations: {}
 
 logging:
-  ## Log level defined by RUST_LOG environment variable. Example: info,kube=debug,kaniop=debug
+  ## Log level defined by RUST_LOG environment variable. Example: info,kube=debug,echo-operator=debug
   ## Ref: https://docs.rs/tracing-subscriber/latest/tracing_subscriber/fmt/index.html#filtering-events-with-environment-variables
   level: "info"
 
@@ -108,7 +108,7 @@ topologySpreadConstraints: []
 #   whenUnsatisfiable: DoNotSchedule
 #   labelSelector:
 #     matchLabels:
-#       app.kubernetes.io/name: kaniop
+#       app.kubernetes.io/name: echo-operator
 
 ## Define which Nodes the Pods are scheduled on.
 ## ref: https://kubernetes.io/docs/user-guide/node-selection/

@@ -5,25 +5,25 @@ templates:
 tests:
   - it: Render with default values and expected release
     release:
-      name: kaniop
-      namespace: kaniop
+      name: echo-operator
+      namespace: echo-operator
     asserts:
       - hasDocuments:
           count: 1
       - equal:
           path: metadata.name
-          value: kaniop
+          value: echo-operator
       - exists:
           path: metadata.labels
       - equal:
           path: subjects
           value:
             - kind: ServiceAccount
-              name: kaniop
-              namespace: kaniop
+              name: echo-operator
+              namespace: echo-operator
       - equal:
           path: roleRef.name
-          value: kaniop
+          value: echo-operator
   - it: Render without rbac
     set:
       rbac.create: false
@@ -32,21 +32,21 @@ tests:
           count: 0
   - it: Render with fullnameOverride
     set:
-      fullnameOverride: kaniop-override
+      fullnameOverride: echo-operator-override
     asserts:
       - hasDocuments:
           count: 1
       - equal:
           path: metadata.name
-          value: kaniop-override
+          value: echo-operator-override
       - exists:
           path: metadata.labels
       - equal:
           path: subjects[0].name
-          value: kaniop
+          value: echo-operator
       - equal:
           path: roleRef.name
-          value: kaniop-override
+          value: echo-operator-override
   - it: Render with serviceAccount.name
     set:
       serviceAccount.name: foo

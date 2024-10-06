@@ -1,7 +1,7 @@
 {{/*
 Expand the name of the chart.
 */}}
-{{- define "kaniop.name" -}}
+{{- define "echo-operator.name" -}}
 {{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
@@ -10,7 +10,7 @@ Create a default fully qualified app name.
 We truncate at 63 chars because some Kubernetes name fields are limited to this (by the DNS naming spec).
 If release name contains chart name it will be used as a full name.
 */}}
-{{- define "kaniop.fullname" -}}
+{{- define "echo-operator.fullname" -}}
 {{- if .Values.fullnameOverride -}}
 {{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" -}}
 {{- else -}}
@@ -23,24 +23,24 @@ If release name contains chart name it will be used as a full name.
 {{- end }}
 {{- end }}
 
-{{- define "kaniop.labels" -}}
-{{- include "kaniop.selectorLabels" . }}
+{{- define "echo-operator.labels" -}}
+{{- include "echo-operator.selectorLabels" . }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
-app.kubernetes.io/part-of: kaniop
+app.kubernetes.io/part-of: echo-operator
 app.kubernetes.io/version: {{ .Values.image.tag | default .Chart.AppVersion | quote }}
 {{- with .Values.additionalLabels }}
 {{ toYaml . }}
 {{- end }}
 {{- end }}
 
-{{- define "kaniop.selectorLabels" -}}
-app.kubernetes.io/name: {{ include "kaniop.name" . }}
+{{- define "echo-operator.selectorLabels" -}}
+app.kubernetes.io/name: {{ include "echo-operator.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
 {{/*
 Create the name of the service account to use
 */}}
-{{- define "kaniop.serviceAccountName" -}}
-{{- default (include "kaniop.name" .) .Values.serviceAccount.name }}
+{{- define "echo-operator.serviceAccountName" -}}
+{{- default (include "echo-operator.name" .) .Values.serviceAccount.name }}
 {{- end }}

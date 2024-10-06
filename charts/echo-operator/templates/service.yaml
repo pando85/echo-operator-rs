@@ -2,9 +2,9 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "kaniop.fullname" . }}
+  name: {{ include "echo-operator.fullname" . }}
   labels:
-    {{- include "kaniop.labels" . | nindent 4 }}
+    {{- include "echo-operator.labels" . | nindent 4 }}
   {{- with .Values.metrics.service.additionalLabels }}
     {{- toYaml . | nindent 4 }}
   {{- end }}
@@ -19,5 +19,5 @@ spec:
       port: {{ .Values.metrics.service.port }}
       targetPort: metrics
   selector:
-    {{- include "kaniop.selectorLabels" . | nindent 4 }}
+    {{- include "echo-operator.selectorLabels" . | nindent 4 }}
 {{- end }}

@@ -1,4 +1,4 @@
-# Kaniop
+# Echo-operator
 
 This repository contains an opinionated example of a Kubernetes Operator built using Rust. It is based on [kube-rs](https://kube.rs/) and demonstrates advanced features and patterns for building effective, scalable Kubernetes operators.
 

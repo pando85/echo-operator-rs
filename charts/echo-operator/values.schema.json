@@ -1,16 +1,16 @@
 {
   "$schema": "https://json-schema.org/draft-07/schema#",
-  "title": "Kaniop Helm Chart Values Schema",
+  "title": "Echo-operator Helm Chart Values Schema",
   "type": "object",
   "additionalProperties": false,
   "properties": {
     "nameOverride": {
       "type": "string",
-      "description": "Provide a name in place of `kaniop`."
+      "description": "Provide a name in place of `echo-operator`."
     },
     "fullnameOverride": {
       "type": "string",
-      "description": "String to fully override `kaniop.fullname`."
+      "description": "String to fully override `echo-operator.fullname`."
     },
     "additionalLabels": {
       "additionalProperties": {

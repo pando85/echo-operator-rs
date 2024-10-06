@@ -110,7 +110,7 @@ jobs:
         shell: bash
         run: |
           echo "PROJECT_NAME=timer" >> $GITHUB_ENV
-          echo "PROJECT_VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' kaniop_core/Cargo.toml | head -n1)" >> $GITHUB_ENV
+          echo "PROJECT_VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' echo-operator_core/Cargo.toml | head -n1)" >> $GITHUB_ENV
 
       - name: Publish crates
         if: startsWith(github.ref, 'refs/tags/')
