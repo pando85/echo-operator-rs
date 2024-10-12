@@ -4,6 +4,7 @@ use crate::echo::reconcile::reconcile_echo;
 use crate::error::Error;
 use crate::metrics;
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use futures::StreamExt;
@@ -50,7 +51,9 @@ pub async fn run(state: State, client: Client) {
 
     let deployment = Api::<Deployment>::all(client.clone());
 
-    let ctx = state.to_context(client, CONTROLLER_ID, deployment_store);
+    let stores = HashMap::from([("deployment".to_string(), Box::new(deployment_store))]);
+
+    let ctx = state.to_context(client, CONTROLLER_ID, stores);
     // TODO: remove for each trigger on delete logic when
     // (dispatch delete events issue)[https://github.com/kube-rs/kube/issues/1590] is solved
     let deployment_watch = watcher(

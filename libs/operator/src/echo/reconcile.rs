@@ -148,7 +148,10 @@ impl Echo {
             ObjectRef::<Deployment>::new_with(&self.name_any(), ()).within(namespace);
         debug!(msg = "getting deployment");
         let deployment = ctx
-            .store
+            .stores
+            .get("deployment")
+            // safe unwrap: deployment store should exists
+            .unwrap()
             .get(&deployment_ref)
             .ok_or_else(|| Error::MissingObject("deployment"))?;
         let owner = deployment
@@ -257,8 +260,8 @@ impl Echo {
 mod test {
     use super::{reconcile_echo, Echo, STATUS_PROGRESSING, STATUS_READY};
 
-    use crate::controller::Context;
     use crate::crd::echo::EchoStatus;
+    use crate::echo::test::get_test_context;
     use crate::echo::test::{timeout_after_1s, Scenario};
 
     use std::sync::Arc;
@@ -269,7 +272,7 @@ mod test {
 
     #[tokio::test]
     async fn echo_create() {
-        let (testctx, fakeserver) = Context::test();
+        let (testctx, fakeserver) = get_test_context();
         let echo = Echo::test(None);
         let mocksrv = fakeserver.run(Scenario::EchoPatch(echo.clone()));
         reconcile_echo(Arc::new(echo), testctx)
@@ -280,7 +283,7 @@ mod test {
 
     #[tokio::test]
     async fn echo_causes_status_patch() {
-        let (testctx, fakeserver) = Context::test();
+        let (testctx, fakeserver) = get_test_context();
         let echo = Echo::test(Some(EchoStatus::default()));
         let mocksrv = fakeserver.run(Scenario::EchoPatch(echo.clone()));
         reconcile_echo(Arc::new(echo), testctx)
@@ -291,7 +294,7 @@ mod test {
 
     #[tokio::test]
     async fn echo_with_replicas_causes_patch() {
-        let (testctx, fakeserver) = Context::test();
+        let (testctx, fakeserver) = get_test_context();
         let echo = Echo::test(Some(EchoStatus::default())).change_replicas(3);
         let scenario = Scenario::EchoPatch(echo.clone());
         let mocksrv = fakeserver.run(scenario);

@@ -7,13 +7,12 @@ mod test {
     use crate::crd::echo::{Echo, EchoSpec, EchoStatus};
     use crate::error::Result;
 
-    use std::hash::Hash;
+    use std::collections::HashMap;
     use std::sync::Arc;
 
     use http::{Request, Response};
     use k8s_openapi::api::apps::v1::Deployment;
     use kube::runtime::reflector::store::Writer;
-    use kube::runtime::reflector::Lookup;
     use kube::{client::Body, Client, Resource, ResourceExt};
 
     impl Echo {
@@ -55,8 +54,6 @@ mod test {
     pub enum Scenario {
         /// objects changes will cause a patch
         EchoPatch(Echo),
-        /// finalized objects "with errors" (i.e. the "illegal" object) will short circuit the apply loop
-        RadioSilence,
     }
 
     pub async fn timeout_after_1s(handle: tokio::task::JoinHandle<()>) {
@@ -82,7 +79,6 @@ mod test {
                 // moving self => one scenario per test
                 match scenario {
                     Scenario::EchoPatch(echo) => self.handle_echo_patch(echo.clone()).await,
-                    Scenario::RadioSilence => Ok(self),
                 }
                 .expect("scenario completed without errors");
             })
@@ -115,20 +111,18 @@ mod test {
         }
     }
 
-    impl<K: 'static + Lookup + Clone> Context<K>
-    where
-        K::DynamicType: Hash + Eq + Clone + Default,
-    {
-        // Create a test context with a mocked kube client, locally registered metrics and default diagnostics
-        pub fn test() -> (Arc<Self>, ApiServerVerifier) {
-            let (mock_service, handle) = tower_test::mock::pair::<Request<Body>, Response<Body>>();
-            let mock_client = Client::new(mock_service, "default");
-            let ctx = Self {
-                client: mock_client,
-                metrics: Arc::default(),
-                store: Arc::new(Writer::default().as_reader()),
-            };
-            (Arc::new(ctx), ApiServerVerifier(handle))
-        }
+    pub fn get_test_context() -> (Arc<Context<Deployment>>, ApiServerVerifier) {
+        let (mock_service, handle) = tower_test::mock::pair::<Request<Body>, Response<Body>>();
+        let mock_client = Client::new(mock_service, "default");
+        let stores = HashMap::from([(
+            "deployment".to_string(),
+            Box::new(Writer::default().as_reader()),
+        )]);
+        let ctx = Context {
+            client: mock_client,
+            metrics: Arc::default(),
+            stores: Arc::new(stores),
+        };
+        (Arc::new(ctx), ApiServerVerifier(handle))
     }
 }
